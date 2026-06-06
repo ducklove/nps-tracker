@@ -31,6 +31,7 @@ import logging
 import os
 import re
 import sys
+import time
 import urllib.request
 from datetime import date, datetime, timedelta
 
@@ -166,13 +167,21 @@ def resolve_code(name: str, resolver) -> str:
 
 
 # ---------- 공공데이터(data.go.kr) ----------
-def _download(url: str, referer: str | None = None, timeout: int = 20) -> bytes:
+def _download(url: str, referer: str | None = None, timeout: int = 20, retries: int = 3) -> bytes:
     headers = {"User-Agent": _USER_AGENT}
     if referer:
         headers["Referer"] = referer
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    last: Exception | None = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except Exception as exc:  # data.go.kr은 간헐적으로 연결을 끊는다 → 재시도
+            last = exc
+            if attempt < retries - 1:
+                time.sleep(2)
+    raise last
 
 
 def _decode_csv(payload: bytes) -> str:
@@ -255,6 +264,15 @@ def load_baseline() -> tuple[list[dict], str | None]:
         "ownership_pct": h.get("ownership_pct", 0),
     } for h in d.get("holdings", []) if h.get("stock_code") and h.get("shares")]
     return holdings, d.get("date")
+
+
+def save_baseline(holdings: list[dict], date_iso: str) -> None:
+    """공공데이터로 환산한 구성을 정적 seed로 저장한다.
+
+    클라우드(GitHub Actions)에서는 data.go.kr 접근이 차단(timeout)되므로, 로컬에서 공공데이터를
+    받아 seed를 갱신·커밋해 두면 Actions는 네트워크 없이 이 완전 구성을 폴백으로 사용한다.
+    """
+    _write_json(SEED_HOLDINGS, {"date": date_iso, "holdings": holdings})
 
 
 # ---------- 종가 ----------
@@ -376,13 +394,6 @@ def build_nav_history(holdings: list[dict], prices: dict[str, list[dict]],
                 "nav": float(tv) / units, "total_count": len(shares),
             })
     return hist
-
-
-def load_seed_nav_history() -> list[dict]:
-    h = _read_json(os.path.join(DATA, "nav_history.json"), None)
-    if h is None:
-        h = _read_json(os.path.join(DATA, "seed_nav_history.json"), []) or []
-    return sorted(h, key=lambda s: s["date"])
 
 
 def _nav_on_or_before(hist: list[dict], d: str) -> dict | None:
@@ -514,13 +525,15 @@ def main():
     args = ap.parse_args()
 
     until = args.until or date.today().isoformat()
-    pub = None if args.no_public else get_public_holdings()
 
+    # 보유구성 확보: 공공데이터(네트워크) 우선 → 실패 시 seed(정적 파일). 어느 쪽이든 (구성, 기준일).
+    holdings = None
+    src_date = None
+    source = None
+    prices: dict[str, list[dict]] = {}
+    pub = None if args.no_public else get_public_holdings()
     if pub:
-        # --- 공공데이터 경로: 전 종목 구성 + 전 기간 NAV 재계산 ---
         rows, src_date = pub
-        if args.limit:
-            rows = rows[:args.limit]
         codes = [r["stock_code"] for r in rows]
         # 연말 기준일이 휴장일일 수 있어(예: 12-31), 직전 거래일 종가까지 포함하도록 앞당겨 조회
         since = (date.fromisoformat(src_date) - timedelta(days=10)).isoformat()
@@ -529,8 +542,8 @@ def main():
         missing = [c for c in codes if c not in prices]
         if missing:
             logger.info("pykrx 미수신 %d종목 → yfinance 폴백", len(missing))
-            prices.update(fetch_prices_yf(missing, src_date, until))
-
+            prices.update(fetch_prices_yf(missing, since, until))
+        # 공개 CSV는 주식수가 없으므로 연말 종가로 추정수량 환산
         holdings = []
         for r in rows:
             p0, _ = _close_on_before(prices.get(r["stock_code"], []), src_date)
@@ -541,51 +554,38 @@ def main():
                     "shares": max(1, round(r["source_market_value"] / p0)),
                     "ownership_pct": r.get("ownership_pct", 0),
                 })
-        if len(holdings) < 100:
-            logger.warning("추정수량 환산 종목 부족(%d) → seed 폴백", len(holdings))
-            pub = None
-        else:
+        if len(holdings) >= 100:
+            save_baseline(holdings, src_date)  # 정적 seed 갱신(클라우드 폴백용)
             source = f"data.go.kr({src_date})"
-            nav_hist = build_nav_history(holdings, prices, src_date, until)
-            if not nav_hist:
-                logger.error("NAV 시계열 생성 실패")
-                sys.exit(1)
-            snap_date = nav_hist[-1]["date"]
-            valid = _evaluate_today(holdings, prices, snap_date)
-            logger.info("공공데이터 평가: %d/%d종목, 기준일 %s", len(valid), len(holdings), snap_date)
+        else:
+            logger.warning("추정수량 환산 종목 부족(%d) → seed 폴백", len(holdings))
+            holdings = None
 
-    if not pub:
-        # --- seed 폴백 경로: seed 구성 + seed NAV 누적 ---
-        holdings, seed_date = load_baseline()
-        if not holdings:
-            logger.error("seed 보유구성이 비어 있습니다.")
+    if holdings is None:
+        # 클라우드(GitHub Actions)에서는 data.go.kr 접근이 막히므로 커밋된 정적 seed를 사용한다.
+        holdings, src_date = load_baseline()
+        if not holdings or not src_date:
+            logger.error("seed 보유구성/기준일이 없습니다.")
             sys.exit(1)
-        if args.limit:
-            holdings = holdings[:args.limit]
-        source = f"seed({seed_date})"
+        source = f"seed({src_date})"
         codes = [h["stock_code"] for h in holdings]
-        since = (date.fromisoformat(until) - timedelta(days=PRICE_LOOKBACK_DAYS)).isoformat()
-        logger.info("seed 폴백 %d종목, 종가 조회 %s ~ %s", len(codes), since, until)
+        since = (date.fromisoformat(src_date) - timedelta(days=10)).isoformat()
+        logger.info("seed %d종목, 종가 조회 %s ~ %s", len(codes), since, until)
         prices = fetch_prices_pykrx(codes, since, until)
         missing = [c for c in codes if c not in prices]
         if missing:
+            logger.info("pykrx 미수신 %d종목 → yfinance 폴백", len(missing))
             prices.update(fetch_prices_yf(missing, since, until))
-        latest = [r[-1]["date"] for r in prices.values() if r]
-        if not latest:
-            logger.error("가격을 받지 못했습니다.")
-            sys.exit(1)
-        snap_date = max(latest)
-        valid = _evaluate_today(holdings, prices, snap_date)
-        prev_hist = [s for s in load_seed_nav_history() if s["date"] < snap_date]
-        total_value = sum(h["market_value"] for h in valid)
-        if prev_hist:
-            units = prev_hist[0]["total_value"] / BASE_NAV
-            nav = total_value / units
-        else:
-            nav = BASE_NAV
-        nav_hist = prev_hist + [{
-            "date": snap_date, "total_value": total_value, "nav": nav, "total_count": len(valid),
-        }]
+
+    if args.limit:
+        holdings = holdings[:args.limit]
+
+    nav_hist = build_nav_history(holdings, prices, src_date, until)
+    if not nav_hist:
+        logger.error("NAV 시계열 생성 실패 — 가격을 받지 못했을 수 있습니다.")
+        sys.exit(1)
+    snap_date = nav_hist[-1]["date"]
+    valid = _evaluate_today(holdings, prices, snap_date)
 
     total_value = nav_hist[-1]["total_value"]
     nav = nav_hist[-1]["nav"]
