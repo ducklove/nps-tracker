@@ -113,8 +113,8 @@ body.embed .container{padding-top:16px; max-width:none;}
 
   <section class="pf-nav-chart-wrap" id="fundTotalSection">
     <div class="pf-nav-header">
-      <h3>국민연금 기금 전체 자산 추이</h3>
-      <div class="pf-sub">전체 적립금(시가) · 2012~2024 월별(KOSIS) + 2025·2026 공시(공공데이터)</div>
+      <h3>국민연금 기금 자산 추이 (금융부문)</h3>
+      <div class="pf-sub">금융부문 6대 자산군 합계(시가) · 2012~ 월별 · 음영=추정(공식 공표 시 자동 교체)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundTotalChart"></div></div>
   </section>
@@ -122,7 +122,7 @@ body.embed .container{padding-top:16px; max-width:none;}
   <section class="pf-nav-chart-wrap" id="fundCompSection">
     <div class="pf-nav-header">
       <h3>자산군별 비중 추이</h3>
-      <div class="pf-sub">국내주식/해외주식/채권/대체투자 등 · 2012~ 월별(KOSIS 기금운용현황 시가)</div>
+      <div class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별 · 음영=추정</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundCompChart"></div></div>
   </section>
@@ -337,8 +337,16 @@ body.embed .container{padding-top:16px; max-width:none;}
     {key:'foreign_bond',   name:'해외채권', color:'#fbbf24'},
     {key:'alternative',    name:'대체투자', color:'#a855f7'},
     {key:'short_term',     name:'단기자금', color:'#06b6d4'},
-    {key:'etc',            name:'기타',     color:'#94a3b8'},  // 복지+기타부문 합산
   ];
+  // 추정 구간(estimatedFrom~끝) 음영 markArea
+  function _fundEstMark(periods){
+    const ef=(DATA.fundPortfolio||{}).estimatedFrom;
+    if(!ef) return undefined;
+    const i=periods.indexOf(ef); if(i<0) return undefined;
+    return {silent:true, itemStyle:{color:_isDark()?'rgba(250,204,21,0.13)':'rgba(245,158,11,0.10)'},
+      label:{show:true, position:'insideTop', color:_textColor(), fontSize:10, formatter:'추정'},
+      data:[[{xAxis:periods[i]},{xAxis:periods[periods.length-1]}]]};
+  }
   function fundPeriodLabel(p){ const a=String(p).split('-'); return a[1]&&a[1]!=='01'? a[0]+'.'+(+a[1]) : a[0]; }
   function _fundSeries(){ const fp=DATA.fundPortfolio; return fp&&fp.series&&fp.series.length? fp.series : null; }
   // 월별 X축 라벨: 매년 1월과 마지막 포인트만 표시(연도 또는 연.월)
@@ -364,6 +372,7 @@ body.embed .container{padding-top:16px; max-width:none;}
       yAxis:{type:'value', min:0, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
       tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return fundPeriodLabel(p.axisValue)+'<br/>기금 전체 '+fmtKrwJo(p.value);}},
       series:[{type:'line', data:totals, symbol:'none', smooth:false, lineStyle:{color:primary,width:2}, itemStyle:{color:primary},
+        markArea:_fundEstMark(periods),
         areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:primary+'40'},{offset:1,color:primary+'00'}]}}}]
     });
   }
@@ -374,12 +383,8 @@ body.embed .container{padding-top:16px; max-width:none;}
     if(!series){ if(sec)sec.style.display='none'; return; }
     if(sec)sec.style.display='';
     const periods=series.map(s=>s.period);
-    // period × sector 금액 행렬. 기타(마지막)는 잔차(전체-6대부문)로 둬 합이 정확히 100%가 되게 한다.
-    const amt=series.map(s=>{
-      const main=FUND_SECTORS.slice(0,-1).map(se=> s[se.key]||0);
-      const sum=main.reduce((a,b)=>a+b,0);
-      return main.concat([Math.max(0,(s.total||sum)-sum)]);
-    });
+    // period × sector 금액 행렬(6대 부문). total=6대 합이라 비중 합이 정확히 100%.
+    const amt=series.map(s=>FUND_SECTORS.map(se=> s[se.key]||0));
     const pct=series.map((s,i)=>{ const t=s.total || amt[i].reduce((a,b)=>a+b,0); return amt[i].map(v=> t? +(v/t*100).toFixed(2):0); });
     const tc=_textColor(), gc=_gridColor();
     const echSeries=FUND_SECTORS.map((se,j)=>({
@@ -388,6 +393,7 @@ body.embed .container{padding-top:16px; max-width:none;}
       itemStyle:{color:se.color},
       data:pct.map(row=>row[j]),
     }));
+    if(echSeries[0]) echSeries[0].markArea=_fundEstMark(periods);
     _newChart(el).setOption({
       grid:{left:44,right:16,top:36,bottom:26},
       legend:{top:2, textStyle:{color:tc,fontSize:11}, itemWidth:12, itemHeight:8, itemGap:10},

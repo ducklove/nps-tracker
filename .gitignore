@@ -8,4 +8,5 @@ venv/
 # 로컬 임시·디버그 산출물 (커밋하지 않음)
 _*.csv
 _*.html
+_*.tsv
 _scratch*
