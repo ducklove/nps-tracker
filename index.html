@@ -49,7 +49,7 @@ header h1{font-size:22px; margin:0 0 6px;}
 .pf-sub{font-size:12px; color:var(--text-secondary); margin-top:3px;}
 .pf-nav-chart-container{height:340px;}
 #npsTreemap{height:560px; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
-#npsNavChart,#npsValueChart,#npsFundTotalChart,#npsFundCompChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+#npsNavChart,#npsValueChart,#npsFundTotalChart,#npsFundCompChart,#npsFundPieChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
 
 /* 테이블 */
 .pf-table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
@@ -122,9 +122,14 @@ body.embed .container{padding-top:16px; max-width:none;}
   <section class="pf-nav-chart-wrap" id="fundCompSection">
     <div class="pf-nav-header">
       <h3>자산군별 비중 추이</h3>
-      <div class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별 · 음영=추정</div>
+      <div class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 직전 공표월까지(월별)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundCompChart"></div></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap" id="fundPieSection">
+    <div class="pf-nav-header"><h3>현재 자산군 비중</h3><div class="pf-sub" id="fundPieSub">최신 시점 기준</div></div>
+    <div class="pf-nav-chart-container"><div id="npsFundPieChart"></div></div>
   </section>
 
   <section class="pf-nav-chart-wrap">
@@ -379,11 +384,12 @@ body.embed .container{padding-top:16px; max-width:none;}
 
   function renderFundCompChart(){
     const el=document.getElementById('npsFundCompChart'), sec=document.getElementById('fundCompSection');
-    const series=_fundSeries();
-    if(!series){ if(sec)sec.style.display='none'; return; }
+    const all=_fundSeries();
+    if(!all){ if(sec)sec.style.display='none'; return; }
+    const series=all.filter(s=>!s.estimated);  // 직전 공표월까지(추정은 파이로 분리)
+    if(!series.length){ if(sec)sec.style.display='none'; return; }
     if(sec)sec.style.display='';
     const periods=series.map(s=>s.period);
-    // period × sector 금액 행렬(6대 부문). total=6대 합이라 비중 합이 정확히 100%.
     const amt=series.map(s=>FUND_SECTORS.map(se=> s[se.key]||0));
     const pct=series.map((s,i)=>{ const t=s.total || amt[i].reduce((a,b)=>a+b,0); return amt[i].map(v=> t? +(v/t*100).toFixed(2):0); });
     const tc=_textColor(), gc=_gridColor();
@@ -393,7 +399,6 @@ body.embed .container{padding-top:16px; max-width:none;}
       itemStyle:{color:se.color},
       data:pct.map(row=>row[j]),
     }));
-    if(echSeries[0]) echSeries[0].markArea=_fundEstMark(periods);
     _newChart(el).setOption({
       grid:{left:44,right:16,top:36,bottom:26},
       legend:{top:2, textStyle:{color:tc,fontSize:11}, itemWidth:12, itemHeight:8, itemGap:10},
@@ -409,11 +414,32 @@ body.embed .container{padding-top:16px; max-width:none;}
     });
   }
 
+  function renderFundPieChart(){
+    const el=document.getElementById('npsFundPieChart'), sec=document.getElementById('fundPieSection');
+    const all=_fundSeries();
+    if(!all){ if(sec)sec.style.display='none'; return; }
+    if(sec)sec.style.display='';
+    const latest=all[all.length-1];  // 최신(추정 포함) 시점
+    const data=FUND_SECTORS.map(se=>({name:se.name, value:latest[se.key]||0, itemStyle:{color:se.color}}))
+      .filter(d=>d.value>0).sort((a,b)=>b.value-a.value);
+    const tc=_textColor();
+    const sub=document.getElementById('fundPieSub');
+    if(sub) sub.textContent=fundPeriodLabel(latest.period)+(latest.estimated?' 추정':' 공표')+' 기준 · 금융부문 6대 자산군';
+    _newChart(el).setOption({
+      tooltip:{trigger:'item', formatter(p){ return '<strong>'+p.name+'</strong><br/>'+fmtKrwJo(p.value)+' ('+p.percent+'%)'; }},
+      legend:{type:'scroll', bottom:0, textStyle:{color:tc,fontSize:11}},
+      series:[{type:'pie', radius:['42%','70%'], center:['50%','45%'], avoidLabelOverlap:true,
+        itemStyle:{borderColor:_isDark()?'#1e293b':'#fff', borderWidth:2},
+        label:{color:tc, fontSize:11, formatter:'{b}\n{d}%'}, labelLine:{length:10, length2:8},
+        data:data}]
+    });
+  }
+
   function renderCharts(){
     _charts.forEach(c=>c.dispose()); _charts=[];
     if(typeof echarts==='undefined') return;
     renderTreemap(); renderNavWithKospi(); renderValueChart();
-    renderFundTotalChart(); renderFundCompChart();
+    renderFundTotalChart(); renderFundCompChart(); renderFundPieChart();
   }
 
   /* ---------- 부트스트랩 ---------- */
