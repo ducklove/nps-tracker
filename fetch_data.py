@@ -1,14 +1,19 @@
 """국민연금(NPS) 국내주식 포트폴리오 정적 대시보드 데이터 생성기.
 
-value-invest의 nps_scraper.py / snapshot_nps.py 로직을 독립 정적 사이트용으로 이식했다.
+value-invest의 NPS 로직(공개 보유내역 → 일별 종가 재평가 → NAV)을 독립 정적 사이트용으로 이식.
 
 데이터 흐름:
-  1) 보유내역: FnGuide 기관보유(strInstCD=49530) → 실패 시 data/seed_holdings_latest.json(baseline)
-  2) 종목코드 매핑: data/stock_meta.json(과거 NPS 종목) 역방향 + 내장 aliases
-  3) 종가: pykrx 단일종목(원주가) → 실패 종목은 yfinance(.KS/.KQ) 폴백
-  4) KOSPI: yfinance(^KS11)
-  5) NAV: 첫 스냅샷 평가총액을 1000으로 고정(총좌수 고정), 현금흐름 없음
-  6) 발행: data.js(window.NPS_DATA), current.json, data/nav_history.json
+  1) 보유내역: data/seed_holdings_latest.json — value-invest 운영 DB에서 추출한 완전 보유구성.
+     공공데이터포털 「국민연금공단 국내주식 투자정보」를 기반으로 가공된 것으로, 삼성전자 등
+     전 종목(평가액 전체 리스트)을 포함한다.
+  2) 종가: pykrx 단일종목(원주가) → 실패 종목은 yfinance(.KS/.KQ) 폴백
+  3) KOSPI: yfinance(^KS11)
+  4) NAV: 첫 스냅샷 평가총액을 1000으로 고정(총좌수 고정), 현금흐름 없음
+  5) 발행: data.js(window.NPS_DATA), current.json, data/nav_history.json
+
+주의: FnGuide 기관보유 페이지(strInstCD=49530)는 **지분율 5% 이상 대량보유 종목만** 제공하고
+응답도 불안정해, 삼성전자처럼 지분율이 5% 안팎인 대형주가 통째로 누락된다. 따라서 보유구성
+소스로 쓰지 않는다. value-invest와 동일하게 공개데이터 기반 완전 구성(seed)을 사용한다.
 
 산출물은 GitHub Actions가 일 1회 커밋하고 GitHub Pages로 배포한다.
 """
@@ -20,7 +25,6 @@ import json
 import logging
 import os
 import sys
-import urllib.request
 from datetime import date, datetime, timedelta
 
 try:  # Windows 콘솔에서도 한글 로그가 깨지지 않도록
@@ -35,84 +39,7 @@ logger = logging.getLogger("nps")
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 BASE_NAV = 1000.0
-FNGUIDE_URL = "https://comp.fnguide.com/SVO/WooriRenewal/Inst_Data.asp?strInstCD=49530"
-PUBLIC_NPS_PAGE_URL = "https://www.data.go.kr/data/3070507/fileData.do"
 PRICE_LOOKBACK_DAYS = 16  # 전 거래일 종가(등락률)와 휴장일을 흡수할 여유
-
-# data.go.kr 공개 데이터는 종목 단축명만 제공하고, 일부 메가캡은 법인명/영문
-# 표기가 달라 매핑에서 누락될 수 있다. 고가중 종목의 별칭을 명시해 둔다.
-# (value-invest/nps_scraper.py 에서 그대로 이식)
-_NPS_NAME_ALIASES = {
-    "삼성전자": "005930",
-    "SK하이닉스": "000660",
-    "LG에너지솔루션": "373220",
-    "삼성바이오로직스": "207940",
-    "현대차": "005380",
-    "기아": "000270",
-    "NAVER": "035420",
-    "셀트리온": "068270",
-    "현대모비스": "012330",
-    "POSCO홀딩스": "005490",
-    "HD현대중공업": "329180",
-    "HD한국조선해양": "009540",
-    "삼성물산": "028260",
-    "LG화학": "051910",
-    "삼성생명": "032830",
-    "한화에어로스페이스": "012450",
-    "삼성SDI": "006400",
-    "카카오": "035720",
-    "크래프톤": "259960",
-    "삼성화재": "000810",
-    "두산에너빌리티": "034020",
-    "기업은행": "024110",
-    "삼성전기": "009150",
-    "삼성에스디에스": "018260",
-    "삼성중공업": "010140",
-    "SK텔레콤": "017670",
-    "LG전자": "066570",
-    "한미반도체": "042700",
-    "HD현대미포": "010620",
-    "SK바이오팜": "326030",
-    "LS ELECTRIC": "010120",
-    "현대차2우B": "005387",
-    "삼성전자우": "005935",
-    "휠라홀딩스": "081660",
-    "HD현대인프라코어": "042670",
-    "아모레G": "002790",
-    "HD현대건설기계": "267270",
-    "DGB금융지주": "139130",
-    "삼성화재우": "000815",
-    "TKG휴켐스": "069260",
-    "DI동일": "001530",
-    "KCC글라스": "344820",
-    "현대차우": "005385",
-    "LG전자우": "066575",
-    "LG화학우": "051915",
-    "아모레퍼시픽우": "090435",
-    "LG생활건강우": "051905",
-    "미래에셋증권2우B": "00680K",
-    "CJ제일제당 우": "097955",
-    "금호석유우": "011785",
-    "유나이티드제약": "033270",
-    "CJ4우(전환)": "00104K",
-    "현대차3우B": "005389",
-    "삼성전기우": "009155",
-    "신세계 I&C": "035510",
-    "KB금융": "105560",
-    "신한지주": "055550",
-    "하나금융지주": "086790",
-    "우리금융지주": "316140",
-    "메리츠금융지주": "138040",
-    "KT&G": "033780",
-    "HMM": "011200",
-    "LG": "003550",
-    "SK": "034730",
-    "LS": "006260",
-    "GS": "078930",
-    "CJ": "001040",
-    "KT": "030200",
-    "S-Oil": "010950",
-}
 
 
 # ---------- 입출력 유틸 ----------
@@ -137,96 +64,24 @@ def _yyyymmdd(iso: str) -> str:
     return iso.replace("-", "")
 
 
-# ---------- 종목코드 매핑 ----------
-def load_name_to_code() -> dict[str, str]:
-    """종목명 → 종목코드. stock_meta(과거 NPS 종목) 역방향 + aliases(별칭 우선)."""
-    meta = _read_json(os.path.join(DATA, "stock_meta.json"), {}) or {}
-    name_to_code: dict[str, str] = {}
-    for code, name in meta.items():
-        if name:
-            name_to_code.setdefault(str(name).strip(), code)
-    name_to_code.update(_NPS_NAME_ALIASES)  # 별칭이 우선
-    return name_to_code
-
-
 # ---------- 보유내역 ----------
-def fetch_fnguide_holdings() -> list[dict]:
-    """FnGuide 기관보유 페이지에서 국민연금 보유내역(종목명/주식수/지분율)을 파싱."""
-    req = urllib.request.Request(FNGUIDE_URL, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        raw = resp.read()
-    from bs4 import BeautifulSoup
+def load_holdings() -> tuple[list[dict], str]:
+    """완전 보유구성을 로드한다(value-invest 운영 DB에서 추출한 seed).
 
-    soup = BeautifulSoup(raw, "html.parser")
-    out: list[dict] = []
-    for tr in soup.find_all("tr"):
-        tds = tr.find_all("td")
-        if len(tds) < 7:
-            continue
-        t = [td.get_text(strip=True) for td in tds]
-        try:
-            int(t[0])  # rank 컬럼이 숫자인 행만
-        except (ValueError, IndexError):
-            continue
-        shares_str = t[2].replace(",", "")
-        shares = int(shares_str) if shares_str.lstrip("-").isdigit() else 0
-        try:
-            ownership = float(t[5])
-        except (ValueError, IndexError):
-            ownership = 0.0
-        report_date = t[6].replace(".", "-") if len(t) > 6 and t[6] else ""
-        out.append({
-            "name": t[1],
-            "shares": shares,
-            "ownership_pct": ownership,
-            "report_date": report_date,
-        })
-    return out
-
-
-def load_baseline_holdings() -> tuple[list[dict], str]:
+    seed는 공개데이터 기반 전 종목 리스트라 삼성전자 등 대형주를 포함한다. 국민연금의
+    보유구성은 분기/연 단위로만 바뀌므로, 일별 변동은 가격에만 반영한다. 더 최신 공개
+    보유내역이 나오면 seed_holdings_latest.json만 교체하면 된다.
+    """
     d = _read_json(os.path.join(DATA, "seed_holdings_latest.json"), {}) or {}
-    return d.get("holdings", []), d.get("date", "")
-
-
-def get_holdings(refresh: bool) -> tuple[list[dict], str]:
-    """보유내역 + 소스 라벨. FnGuide 우선, 실패 시 seed baseline."""
-    if refresh:
-        try:
-            raw = fetch_fnguide_holdings()
-            if raw:
-                n2c = load_name_to_code()
-                resolved, missing = [], []
-                for h in raw:
-                    code = n2c.get(str(h["name"]).strip())
-                    if code and len(code) == 6:
-                        resolved.append({
-                            "stock_code": code,
-                            "stock_name": h["name"],
-                            "shares": h["shares"],
-                            "ownership_pct": h["ownership_pct"],
-                        })
-                    else:
-                        missing.append(h["name"])
-                if missing:
-                    logger.warning("FnGuide 코드 매핑 실패 %d종목: %s",
-                                   len(missing), ", ".join(missing[:10]))
-                if len(resolved) >= 50:
-                    rd = raw[0].get("report_date", "")
-                    logger.info("FnGuide 보유내역 %d종목 사용 (공시 %s)", len(resolved), rd)
-                    return resolved, "fnguide"
-                logger.warning("FnGuide 매핑 종목이 너무 적음(%d) → baseline 사용", len(resolved))
-        except Exception as exc:
-            logger.warning("FnGuide 수집 실패, baseline 사용: %s", exc)
-
-    hold, d = load_baseline_holdings()
-    logger.info("baseline 보유내역 %d종목 사용 (기준 %s)", len(hold), d)
-    return ([{
+    holdings = [{
         "stock_code": h["stock_code"],
         "stock_name": h["stock_name"],
         "shares": h["shares"],
         "ownership_pct": h.get("ownership_pct", 0),
-    } for h in hold], "baseline")
+    } for h in d.get("holdings", []) if h.get("stock_code") and h.get("shares")]
+    src_date = d.get("date", "?")
+    logger.info("보유구성 %d종목 로드 (기준 %s)", len(holdings), src_date)
+    return holdings, f"seed({src_date})"
 
 
 # ---------- 종가 ----------
@@ -430,8 +285,6 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
 
 def main():
     ap = argparse.ArgumentParser(description="국민연금 포트폴리오 대시보드 데이터 생성")
-    ap.add_argument("--no-refresh", action="store_true",
-                    help="FnGuide 갱신 없이 seed baseline 보유구성을 사용(가격만 갱신)")
     ap.add_argument("--limit", type=int, default=0, help="테스트용 종목 수 제한")
     ap.add_argument("--until", default=None, help="기준일 상한 YYYY-MM-DD (기본: 오늘)")
     args = ap.parse_args()
@@ -439,7 +292,7 @@ def main():
     until = args.until or date.today().isoformat()
     since = (date.fromisoformat(until) - timedelta(days=PRICE_LOOKBACK_DAYS)).isoformat()
 
-    holdings, source = get_holdings(refresh=not args.no_refresh)
+    holdings, source = load_holdings()
     if args.limit:
         holdings = holdings[:args.limit]
     codes = [h["stock_code"] for h in holdings]
@@ -468,6 +321,11 @@ def main():
         item = dict(h)
         item.update(price=price, change_pct=change_pct, market_value=market_value)
         valid.append(item)
+
+    priced_ratio = len(valid) / len(holdings) if holdings else 0
+    logger.info("가격 평가 완료: %d/%d종목 (%.0f%%)", len(valid), len(holdings), priced_ratio * 100)
+    if priced_ratio < 0.90:
+        logger.warning("가격 평가 종목 비율이 낮습니다(%.0f%%) — 일부 종목이 누락될 수 있음", priced_ratio * 100)
 
     total_value = sum(h["market_value"] for h in valid)
     if total_value <= 0:

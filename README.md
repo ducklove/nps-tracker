@@ -6,8 +6,9 @@
 공개 보유내역을 수집해 일별 종가로 재평가하고, NAV(기준가) 추이를 KOSPI와 비교한다.
 
 ## 데이터 출처
-- **보유내역**: 공공데이터포털 「국민연금공단_국내주식 투자정보」(연도말) · FnGuide 기관보유(보조)
-- **보유구성 baseline**: `value-invest` 운영 DB에서 1회 추출한 최신 보유내역(`data/seed_holdings_latest.json`)
+- **보유구성**: `value-invest` 운영 DB에서 추출한 완전 보유내역(`data/seed_holdings_latest.json`).
+  공공데이터포털 「국민연금공단 국내주식 투자정보」 기반으로 삼성전자 등 전 종목을 포함한다.
+  (FnGuide 기관보유 페이지는 지분율 5% 이상 대량보유 종목만 제공해 대형주가 누락되므로 쓰지 않는다.)
 - **종가**: KRX(pykrx, 원주가) · 폴백 yfinance(`.KS`/`.KQ`)
 - **KOSPI**: yfinance(`^KS11`)
 - **과거 NAV 시계열**(2025-12-30 ~ 2026-05-08): `value-invest` 운영 DB에서 1회 백필(`data/seed_nav_history.json`)
