@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>국민연금 국내주식 포트폴리오</title>
+<meta name="description" content="국민연금공단(NPS) 국내주식 보유 포트폴리오를 일별 종가로 재평가한 NAV 추이와 KOSPI 비교 대시보드">
+<style>
+:root{
+  --bg:#f5f5f5; --surface:#ffffff; --surface-muted:rgba(148,163,184,.10);
+  --text:#1a1a1a; --text-secondary:#666; --border:#e0e0e0; --primary:#2563eb;
+}
+[data-theme="dark"]{
+  --bg:#0f172a; --surface:#1e293b; --surface-muted:rgba(148,163,184,.12);
+  --text:#e2e8f0; --text-secondary:#94a3b8; --border:#334155; --primary:#3b82f6;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  font-size:14px; line-height:1.5;
+}
+.container{max-width:1080px; margin:0 auto; padding:24px 16px 64px;}
+header h1{font-size:22px; margin:0 0 6px;}
+.meta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:var(--text-secondary); font-size:12px;}
+.meta .spacer{flex:1;}
+#themeToggle{
+  background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
+  border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px;
+}
+#themeToggle:hover{color:var(--text);}
+.source-note{
+  margin:14px 0 22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
+  background:var(--surface-muted); color:var(--text-secondary); font-size:12px; line-height:1.55;
+}
+.source-note a{color:var(--primary); text-decoration:none;}
+
+/* 요약 카드 */
+.pf-summary{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:22px;}
+.pf-summary-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px;}
+.pf-summary-label{font-size:12px; color:var(--text-secondary); margin-bottom:6px;}
+.pf-summary-value{font-size:22px; font-weight:700;}
+.pf-summary-sub{font-size:12px; color:var(--text-secondary); margin-top:4px;}
+
+/* 섹션 / 차트 */
+.pf-nav-chart-wrap{margin-bottom:26px;}
+.pf-nav-header{margin-bottom:10px;}
+.pf-nav-header h3{font-size:16px; margin:0;}
+.pf-nav-chart-container{height:340px;}
+#npsTreemap{height:560px; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+#npsNavChart,#npsValueChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+
+/* 테이블 */
+.pf-table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
+.pf-table{width:100%; border-collapse:collapse; font-size:13px; background:var(--surface);}
+.pf-table thead th{
+  position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--border);
+  padding:10px 12px; text-align:right; font-weight:600; color:var(--text-secondary); white-space:nowrap;
+}
+.pf-table th.pf-col-name{text-align:left;}
+.pf-table td{padding:9px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap;}
+.pf-table tr:last-child td{border-bottom:none;}
+.pf-col-name{text-align:left;}
+.pf-sortable{cursor:pointer; user-select:none;}
+.pf-sortable:hover{color:var(--text);}
+
+.nps-up{color:#dc2626;} .nps-down{color:#2563eb;} .nps-neutral{color:var(--text-secondary);}
+[data-theme="dark"] .nps-up{color:#fca5a5;} [data-theme="dark"] .nps-down{color:#93c5fd;}
+
+.empty{padding:48px 16px; text-align:center; color:var(--text-secondary);}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>국민연금 국내주식 포트폴리오</h1>
+    <div class="meta">
+      <span id="metaAsOf"></span>
+      <span class="spacer"></span>
+      <button id="themeToggle" type="button">다크 모드</button>
+    </div>
+    <div class="source-note" id="sourceNote">
+      국민연금공단 국내주식 투자정보(공개 보유내역)를 일별 종가로 재평가한 추정치입니다.
+      첫 스냅샷의 평가총액을 NAV 1000으로 고정하고, 이후 평가총액 변동만 NAV에 반영합니다.
+      <a href="https://www.data.go.kr/data/3070507/fileData.do" target="_blank" rel="noopener noreferrer">원천 보기</a>
+    </div>
+  </header>
+
+  <div id="summary" class="pf-summary"></div>
+
+  <section class="pf-nav-chart-wrap">
+    <div class="pf-nav-header"><h3>포트폴리오 구성</h3></div>
+    <div id="npsTreemap"></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap">
+    <div class="pf-nav-header"><h3>NAV 추이 (vs KOSPI)</h3></div>
+    <div class="pf-nav-chart-container"><div id="npsNavChart"></div></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap">
+    <div class="pf-nav-header"><h3>총 평가금액 추이</h3></div>
+    <div class="pf-nav-chart-container"><div id="npsValueChart"></div></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap">
+    <div class="pf-nav-header"><h3>보유 종목</h3></div>
+    <div class="pf-table-wrap">
+      <table class="pf-table" id="npsTable">
+        <thead><tr>
+          <th class="pf-col-name pf-sortable" data-sort="name">종목명</th>
+          <th class="pf-sortable" data-sort="change">등락률</th>
+          <th>현재가</th>
+          <th>추정수량</th>
+          <th class="pf-sortable" data-sort="mv">평가금액</th>
+          <th>비중</th>
+          <th class="pf-sortable" data-sort="own">지분율</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function(){
+  const DATA = window.NPS_DATA;
+  if(!DATA){
+    document.querySelector('.container').insertAdjacentHTML('beforeend',
+      '<div class="empty">데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>');
+    return;
+  }
+
+  /* ---------- 포매터 ---------- */
+  function fmtKrwJo(v){
+    const av=Math.abs(v);
+    if(av>=1e12){ const x=v/1e12; const d=av>=1e15?0:av>=1e14?1:av>=1e13?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'조'; }
+    if(av>=1e8){ const x=v/1e8; const d=av>=1e11?0:av>=1e10?1:av>=1e9?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'억'; }
+    return Math.round(v).toLocaleString('ko-KR')+'원';
+  }
+  function fmtPct(v){ if(v==null) return '-'; return (v>0?'+':'')+v.toFixed(2)+'%'; }
+  function pctClass(v){ if(v==null||v===0) return 'nps-neutral'; return v>0?'nps-up':'nps-down'; }
+
+  /* 등락률 → 색 (snapshot_nps의 returnToColor 이식) */
+  function returnToColor(pct, range){
+    range=range||20;
+    if(pct==null) return '#9ca3af';
+    let t=Math.max(-1,Math.min(1,pct/range)); const a=Math.abs(t);
+    const gray=[156,163,175], blue=[37,99,235], red=[220,38,38];
+    const tgt=t<0?blue:red;
+    const r=Math.round(gray[0]+(tgt[0]-gray[0])*a), g=Math.round(gray[1]+(tgt[1]-gray[1])*a), b=Math.round(gray[2]+(tgt[2]-gray[2])*a);
+    return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  /* 트리맵 색 (blue→gray→red, ±5% clamp) */
+  function treemapColor(pct){
+    if(pct==null) return _isDark()?'#475569':'#9ca3af';
+    const c=Math.max(-5,Math.min(5,pct)); const t=(c+5)/10;
+    let r,g,b;
+    if(t<0.5){ const s=t/0.5; r=Math.round(37+(148-37)*s); g=Math.round(99+(163-99)*s); b=Math.round(235+(184-235)*s); }
+    else{ const s=(t-0.5)/0.5; r=Math.round(148+(220-148)*s); g=Math.round(163+(38-163)*s); b=Math.round(184+(38-184)*s); }
+    return 'rgb('+r+','+g+','+b+')';
+  }
+
+  /* ---------- 테마 ---------- */
+  function _isDark(){ return document.documentElement.getAttribute('data-theme')==='dark'; }
+  function _textColor(){ return getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim()||'#888'; }
+  function _gridColor(){ return getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#ccc'; }
+
+  /* ---------- 요약 카드 ---------- */
+  function renderSummary(){
+    const s=DATA.summary||{};
+    document.getElementById('metaAsOf').textContent =
+      '기준일 '+(s.asOf||DATA.asOf||'-')+' · 갱신 '+(DATA.lastUpdated||'-')+' · '+(s.count||0)+'종목';
+    const cards=[
+      {label:'총 평가금액', value:fmtKrwJo(s.totalValue||0), sub:'NAV '+(s.nav!=null?s.nav.toFixed(2):'-'), cls:''},
+      {label:'오늘', value:fmtPct(s.todayPct), sub:'가중평균 등락률', cls:pctClass(s.todayPct)},
+      {label:'MTD', value:fmtPct(s.mtdPct), sub:'전월말 대비', cls:pctClass(s.mtdPct)},
+      {label:'YTD', value:fmtPct(s.ytdPct), sub:'연초 대비', cls:pctClass(s.ytdPct)},
+    ];
+    document.getElementById('summary').innerHTML = cards.map(c=>
+      '<div class="pf-summary-card"><div class="pf-summary-label">'+c.label+'</div>'+
+      '<div class="pf-summary-value '+c.cls+'">'+c.value+'</div>'+
+      '<div class="pf-summary-sub">'+c.sub+'</div></div>'
+    ).join('');
+  }
+
+  /* ---------- 테이블 ---------- */
+  let _sortKey='mv', _sortAsc=false;
+  function renderTable(){
+    const tbody=document.querySelector('#npsTable tbody');
+    const rows=(DATA.holdings||[]).slice();
+    rows.sort((a,b)=>{
+      if(_sortKey==='name') return _sortAsc? (a.stock_name||'').localeCompare(b.stock_name||'','ko') : (b.stock_name||'').localeCompare(a.stock_name||'','ko');
+      const m={change:'change_pct',mv:'market_value',own:'ownership_pct'}[_sortKey];
+      const va=a[m]||0, vb=b[m]||0; return _sortAsc? va-vb : vb-va;
+    });
+    tbody.innerHTML = rows.map(h=>{
+      const cp=h.change_pct;
+      return '<tr>'+
+        '<td class="pf-col-name">'+h.stock_name+'</td>'+
+        '<td class="'+pctClass(cp)+'">'+fmtPct(cp)+'</td>'+
+        '<td>'+(h.price?Math.round(h.price).toLocaleString('ko-KR'):'-')+'</td>'+
+        '<td>'+(h.shares?h.shares.toLocaleString('ko-KR'):'-')+'</td>'+
+        '<td>'+(h.market_value?Math.round(h.market_value).toLocaleString('ko-KR'):'-')+'</td>'+
+        '<td>'+(h.weight!=null?h.weight.toFixed(1)+'%':'-')+'</td>'+
+        '<td>'+(h.ownership_pct!=null?h.ownership_pct.toFixed(2)+'%':'-')+'</td>'+
+      '</tr>';
+    }).join('');
+    document.querySelectorAll('#npsTable th.pf-sortable').forEach(th=>{
+      const base=th.textContent.replace(/[▲▼]/g,'').trim();
+      th.textContent = th.dataset.sort===_sortKey ? base+(_sortAsc?' ▲':' ▼') : base;
+    });
+  }
+  document.querySelectorAll('#npsTable th.pf-sortable').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const k=th.dataset.sort;
+      if(_sortKey===k) _sortAsc=!_sortAsc; else { _sortKey=k; _sortAsc=(k==='name'); }
+      renderTable();
+    });
+  });
+
+  /* ---------- 차트 ---------- */
+  let _charts=[];
+  function _newChart(el){ const c=echarts.init(el); _charts.push(c); return c; }
+
+  function renderTreemap(){
+    const el=document.getElementById('npsTreemap');
+    const data=(DATA.treemap||[]).map(d=>({name:d.name, value:d.value, changePct:d.changePct, itemStyle:{color:treemapColor(d.changePct)}}));
+    if(!data.length) return;
+    const isDark=_isDark();
+    _newChart(el).setOption({
+      tooltip:{formatter(info){const d=info.data; return '<strong>'+info.name+'</strong><br/>평가: '+Number(info.value).toLocaleString()+'<br/>일간: '+fmtPct(d.changePct);}},
+      series:[{type:'treemap', left:0,right:0,top:0,bottom:0, roam:false, nodeClick:false, breadcrumb:{show:false},
+        itemStyle:{borderColor:isDark?'#334155':'#e5e7eb', borderWidth:1},
+        label:{show:true, formatter(p){const cp=p.data.changePct; const s=cp!=null?(cp>0?'+':'')+cp.toFixed(2)+'%':''; return '{name|'+p.name+'}\n{pct|'+s+'}';},
+          rich:{name:{fontSize:11,fontWeight:600,color:'#fff',lineHeight:16}, pct:{fontSize:10,color:'rgba(255,255,255,0.85)',lineHeight:14}}},
+        data:data}]
+    });
+  }
+
+  function renderNavWithKospi(){
+    const el=document.getElementById('npsNavChart');
+    const nav=DATA.navHistory||[];
+    if(!nav.length) return;
+    const labels=nav.map(d=>d.date.slice(5));
+    const navValues=nav.map(d=>d.nav);
+    let navColor='#9ca3af';
+    if(nav.length>1){ const w=nav.slice(-365); if(w.length>1){ navColor=returnToColor((nav[nav.length-1].nav/w[0].nav-1)*100); } }
+    const kospiByDate=Object.fromEntries((DATA.kospiHistory||[]).map(d=>[d.date,d.value]));
+    const kRaw=nav.map(d=>kospiByDate[d.date]!=null?kospiByDate[d.date]:null);
+    let kNorm=[]; const kBase=kRaw.find(v=>v!=null&&v>0);
+    if(kBase) kNorm=kRaw.map(v=>v!=null?+(v/kBase*1000).toFixed(2):null);
+    const series=[{name:'국민연금', type:'line', data:navValues, symbol:'none', smooth:false,
+      lineStyle:{color:navColor,width:2}, itemStyle:{color:navColor},
+      areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:navColor+'33'},{offset:1,color:navColor+'00'}]}}}];
+    if(kNorm.length){ series.push({name:'KOSPI', type:'line', data:kNorm, symbol:'none', smooth:false, lineStyle:{color:'#94a3b8',width:1.5,type:'dashed'}, itemStyle:{color:'#94a3b8'}}); }
+    const tc=_textColor(), gc=_gridColor();
+    _newChart(el).setOption({
+      grid:{left:60,right:14,top:28,bottom:26},
+      legend:{show:kNorm.length>0, top:0, right:0, textStyle:{color:tc,fontSize:11}},
+      xAxis:{type:'category', data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:10}, splitLine:{show:false}},
+      yAxis:{type:'value', scale:true, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10}, splitLine:{lineStyle:{color:gc,width:0.5}}},
+      tooltip:{trigger:'axis', formatter(ps){let s=ps[0].axisValue; ps.forEach(p=>{const pct=((p.value/1000-1)*100).toFixed(2); s+='<br/>'+p.marker+' '+p.seriesName+': '+p.value.toLocaleString()+' ('+(pct>0?'+':'')+pct+'%)';}); return s;}},
+      series:series
+    });
+  }
+
+  function renderValueChart(){
+    const el=document.getElementById('npsValueChart');
+    const vh=DATA.valueHistory||[];
+    if(!vh.length) return;
+    const labels=vh.map(d=>d.date.slice(5));
+    const values=vh.map(d=>d.total_value);
+    let color='#9ca3af';
+    if(vh.length>1){ const w=vh.slice(-30); if(w.length>1){ color=returnToColor((vh[vh.length-1].total_value/w[0].total_value-1)*100,10); } }
+    const tc=_textColor(), gc=_gridColor();
+    _newChart(el).setOption({
+      grid:{left:60,right:14,top:12,bottom:26},
+      xAxis:{type:'category', data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:10}, splitLine:{show:false}},
+      yAxis:{type:'value', scale:true, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
+      tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return p.axisValue+'<br/>'+fmtKrwJo(p.value);}},
+      series:[{type:'line', data:values, symbol:'none', smooth:false, lineStyle:{color:color,width:2}, itemStyle:{color:color},
+        areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:color+'33'},{offset:1,color:color+'00'}]}}}]
+    });
+  }
+
+  function renderCharts(){
+    _charts.forEach(c=>c.dispose()); _charts=[];
+    if(typeof echarts==='undefined') return;
+    renderTreemap(); renderNavWithKospi(); renderValueChart();
+  }
+
+  /* ---------- 부트스트랩 ---------- */
+  function loadECharts(){
+    return new Promise((resolve,reject)=>{
+      if(typeof echarts!=='undefined'){ resolve(); return; }
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js';
+      s.onload=resolve; s.onerror=reject; document.head.appendChild(s);
+    });
+  }
+
+  // 테마 초기화 + 토글
+  const saved=localStorage.getItem('nps-theme');
+  const initial=saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
+  document.documentElement.setAttribute('data-theme', initial);
+  function syncToggleLabel(){ document.getElementById('themeToggle').textContent = _isDark()?'라이트 모드':'다크 모드'; }
+  document.getElementById('themeToggle').addEventListener('click',()=>{
+    const next=_isDark()?'light':'dark';
+    document.documentElement.setAttribute('data-theme',next);
+    localStorage.setItem('nps-theme',next);
+    syncToggleLabel(); renderCharts();
+  });
+  syncToggleLabel();
+
+  renderSummary();
+  renderTable();
+  loadECharts().then(renderCharts).catch(()=>{});
+  window.addEventListener('resize',()=>_charts.forEach(c=>c.resize()));
+})();
+</script>
+</body>
+</html>
