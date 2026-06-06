@@ -57,6 +57,7 @@ PUBLIC_NPS_FALLBACK_CSV_URL = (
     "?atchFileId=FILE_000000003558824&fileDetailSn=1&insertDataPrcus=N"
 )
 PUBLIC_NPS_FALLBACK_DATE = "2024-12-31"
+FNGUIDE_URL = "https://comp.fnguide.com/SVO/WooriRenewal/Inst_Data.asp?strInstCD=49530"
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
 _PUBLIC_CSV_URL_RE = re.compile(r'"contentUrl"\s*:\s*"([^"]+fileDownload\.do[^"]+)"')
@@ -252,6 +253,45 @@ def get_public_holdings() -> tuple[list[dict], str] | None:
         return None
     logger.info("공공데이터 %s: %d종목 중 %d종목 매핑", src_date, len(rows), len(resolved))
     return resolved, src_date
+
+
+# ---------- 공시종목(5%↑) 최신 수량: FnGuide ----------
+def fetch_fnguide_holdings() -> list[dict]:
+    """FnGuide 기관보유 페이지에서 (종목명, 보유주식수)를 파싱. 지분율 5%↑ 대량보유 종목만 게재된다."""
+    payload = _download(FNGUIDE_URL)
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(payload, "html.parser")
+    out = []
+    for tr in soup.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) < 7:
+            continue
+        t = [td.get_text(strip=True) for td in tds]
+        try:
+            int(t[0])  # rank 컬럼이 숫자인 행만
+        except (ValueError, IndexError):
+            continue
+        s = t[2].replace(",", "")
+        shares = int(s) if s.lstrip("-").isdigit() else 0
+        if shares > 0:
+            out.append({"name": t[1], "shares": shares})
+    return out
+
+
+def fetch_fnguide_shares(resolver) -> dict[str, int]:
+    """공시종목(5%↑) 최신 분기 보유주식수 {종목코드: shares}. 실패 시 빈 dict(공공 수량 유지)."""
+    try:
+        rows = fetch_fnguide_holdings()
+    except Exception as exc:
+        logger.warning("FnGuide 수량 조회 실패(공공 연말 수량 유지): %s", exc)
+        return {}
+    out: dict[str, int] = {}
+    for r in rows:
+        code = resolve_code(r["name"], resolver)
+        if code and len(code) == 6:
+            out[code] = r["shares"]
+    return out
 
 
 # ---------- seed (폴백) ----------
@@ -585,6 +625,17 @@ def main():
 
     if args.limit:
         holdings = holdings[:args.limit]
+
+    # 공시종목(5%↑ 대량보유) 수량을 FnGuide 최신 분기 값으로 갱신(공공 연말 추정수량 위에 덮음).
+    # 5% 미만 종목은 공시가 없어 연말 수량을 유지한다. FnGuide 실패 시 공공 수량 그대로.
+    fg = fetch_fnguide_shares(load_resolver())
+    if fg:
+        applied = sum(1 for h in holdings
+                      if h["stock_code"] in fg and fg[h["stock_code"]] != h["shares"])
+        for h in holdings:
+            if h["stock_code"] in fg:
+                h["shares"] = fg[h["stock_code"]]
+        logger.info("FnGuide 공시수량 갱신: 매칭 %d종목 중 %d종목 변경", len(fg), applied)
 
     nav_hist = build_nav_history(holdings, prices, src_date, until)
     if not nav_hist:
