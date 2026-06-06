@@ -461,6 +461,10 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "weight": (h["market_value"] / total_disp * 100) if total_disp else None,
     } for h in holdings]
 
+    # 초기 로딩은 평가액 상위 TOP_N만(테이블 DOM 렌더 병목 완화). 나머지는 current.json에서 지연 로딩.
+    TOP_N = 100
+    top = hjson[:TOP_N]
+
     summary = {
         "totalValue": total_value,
         "nav": round(nav, 2),
@@ -475,18 +479,20 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "asOf": snap_date,
         "source": source,
         "summary": summary,
-        "holdings": hjson,
+        "holdings": top,
+        "holdingsTotal": len(hjson),
         "navHistory": [{"date": s["date"], "nav": round(s["nav"], 4)} for s in hist],
         "valueHistory": [{"date": s["date"], "total_value": s["total_value"]} for s in hist],
         "kospiHistory": kospi,
         "treemap": [
             {"name": h["stock_name"], "value": h["market_value"], "changePct": h.get("change_pct")}
-            for h in holdings if h["market_value"] > 0
+            for h in holdings[:TOP_N] if h["market_value"] > 0
         ],
     }
 
     with open(os.path.join(ROOT, "data.js"), "w", encoding="utf-8") as f:
         f.write("window.NPS_DATA = " + json.dumps(nps_data, ensure_ascii=False) + ";\n")
+    # current.json은 전체 보유내역(지연 로딩 + 허브 인사이트용)
     _write_json(os.path.join(ROOT, "current.json"), {
         "lastUpdated": nps_data["lastUpdated"],
         "asOf": snap_date,

@@ -68,6 +68,13 @@ header h1{font-size:22px; margin:0 0 6px;}
 [data-theme="dark"] .nps-up{color:#fca5a5;} [data-theme="dark"] .nps-down{color:#93c5fd;}
 
 .empty{padding:48px 16px; text-align:center; color:var(--text-secondary);}
+
+/* iframe 임베드(?embed=true): 헤더·출처노트 숨기고 여백 축소 */
+body.embed header, body.embed .source-note{display:none;}
+body.embed .container{padding-top:16px;}
+.load-all-wrap{text-align:center; margin-top:14px;}
+#loadAllBtn{background:var(--surface); color:var(--primary); border:1px solid var(--border); border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px;}
+#loadAllBtn:hover{border-color:var(--primary);}
 </style>
 </head>
 <body>
@@ -119,6 +126,7 @@ header h1{font-size:22px; margin:0 0 6px;}
         <tbody></tbody>
       </table>
     </div>
+    <div class="load-all-wrap" style="display:none;"><button id="loadAllBtn" type="button"></button></div>
   </section>
 </div>
 
@@ -187,9 +195,11 @@ header h1{font-size:22px; margin:0 0 6px;}
 
   /* ---------- 테이블 ---------- */
   let _sortKey='mv', _sortAsc=false;
+  let _allHoldings=null;
+  function _holdings(){ return _allHoldings || DATA.holdings || []; }
   function renderTable(){
     const tbody=document.querySelector('#npsTable tbody');
-    const rows=(DATA.holdings||[]).slice();
+    const rows=_holdings().slice();
     rows.sort((a,b)=>{
       if(_sortKey==='name') return _sortAsc? (a.stock_name||'').localeCompare(b.stock_name||'','ko') : (b.stock_name||'').localeCompare(a.stock_name||'','ko');
       const m={change:'change_pct',mv:'market_value',own:'ownership_pct'}[_sortKey];
@@ -211,6 +221,14 @@ header h1{font-size:22px; margin:0 0 6px;}
       const base=th.textContent.replace(/[▲▼]/g,'').trim();
       th.textContent = th.dataset.sort===_sortKey ? base+(_sortAsc?' ▲':' ▼') : base;
     });
+    const wrap=document.querySelector('.load-all-wrap');
+    const total=DATA.holdingsTotal || _holdings().length;
+    if(wrap){
+      if(!_allHoldings && total > _holdings().length){
+        document.getElementById('loadAllBtn').textContent='전체 '+total+'종목 보기 (현재 상위 '+_holdings().length+')';
+        wrap.style.display='';
+      } else { wrap.style.display='none'; }
+    }
   }
   document.querySelectorAll('#npsTable th.pf-sortable').forEach(th=>{
     th.addEventListener('click',()=>{
@@ -218,6 +236,15 @@ header h1{font-size:22px; margin:0 0 6px;}
       if(_sortKey===k) _sortAsc=!_sortAsc; else { _sortKey=k; _sortAsc=(k==='name'); }
       renderTable();
     });
+  });
+  document.getElementById('loadAllBtn').addEventListener('click', async function(){
+    this.textContent='불러오는 중…'; this.disabled=true;
+    try{
+      const r=await fetch('current.json',{cache:'no-cache'});
+      const j=await r.json();
+      _allHoldings=j.holdings||[];
+      renderTable();
+    }catch(e){ this.textContent='불러오기 실패 — 다시 시도'; this.disabled=false; }
   });
 
   /* ---------- 차트 ---------- */
@@ -301,18 +328,29 @@ header h1{font-size:22px; margin:0 0 6px;}
     });
   }
 
-  // 테마 초기화 + 토글
+  // URL 파라미터: ?embed=true (헤더·출처 숨김), ?theme=light|dark (부모 테마 강제)
+  const _params=new URLSearchParams(location.search);
+  const _embed=_params.get('embed')==='true';
+  const _themeParam=_params.get('theme');
+  if(_embed) document.body.classList.add('embed');
+
+  // 테마: 쿼리 theme 우선 → localStorage → 시스템. embed 또는 theme 지정 시 토글 숨김(부모가 제어).
   const saved=localStorage.getItem('nps-theme');
-  const initial=saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
+  const initial=_themeParam || saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
   document.documentElement.setAttribute('data-theme', initial);
-  function syncToggleLabel(){ document.getElementById('themeToggle').textContent = _isDark()?'라이트 모드':'다크 모드'; }
-  document.getElementById('themeToggle').addEventListener('click',()=>{
-    const next=_isDark()?'light':'dark';
-    document.documentElement.setAttribute('data-theme',next);
-    localStorage.setItem('nps-theme',next);
-    syncToggleLabel(); renderCharts();
-  });
-  syncToggleLabel();
+  const _toggle=document.getElementById('themeToggle');
+  if(_embed || _themeParam){
+    _toggle.style.display='none';
+  } else {
+    const syncToggleLabel=()=>{ _toggle.textContent = _isDark()?'라이트 모드':'다크 모드'; };
+    _toggle.addEventListener('click',()=>{
+      const next=_isDark()?'light':'dark';
+      document.documentElement.setAttribute('data-theme',next);
+      localStorage.setItem('nps-theme',next);
+      syncToggleLabel(); renderCharts();
+    });
+    syncToggleLabel();
+  }
 
   renderSummary();
   renderTable();
