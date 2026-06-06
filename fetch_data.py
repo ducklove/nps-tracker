@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import calendar
 import csv
+from collections import defaultdict
 import io
 import json
 import logging
@@ -64,6 +65,13 @@ FUND_PORTFOLIO_PAGE_URL = "https://www.data.go.kr/data/15106894/fileData.do"
 FUND_PORTFOLIO_FALLBACK_CSV_URL = (
     "https://www.data.go.kr/cmm/cmm/fileDownload.do"
     "?atchFileId=FILE_000000003647207&fileDetailSn=1&insertDataPrcus=N"
+)
+# KOSIS 「기금운용현황(시가)」 DT_32202_B095 — 2012~2024 월별 부문별(PRD_DE=연도 × C2=월).
+# 인증키는 환경변수 KOSIS_API_KEY로만 받는다(코드/커밋에 키를 두지 않음).
+KOSIS_FUND_URL = (
+    "https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList"
+    "&apiKey={key}&itmId=H001+&objL1=ALL&objL2=ALL&objL3=&objL4=&objL5=&objL6=&objL7=&objL8="
+    "&format=json&jsonVD=Y&prdSe=M&newEstPrdCnt=1200&orgId=322&tblId=DT_32202_B095"
 )
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
@@ -373,23 +381,96 @@ def fetch_fund_portfolio() -> dict | None:
     return {"unit": "won", "asOf": series[-1]["period"], "series": series}
 
 
+def fetch_kosis_fund_monthly() -> list[dict] | None:
+    """KOSIS 「기금운용현황(시가)」 월별 부문분해 시계열(2012-01~2024-12, 원 단위).
+
+    DT_32202_B095는 PRD_DE=연도 × C2=월(02~13=1~12월) 구조다. C1(부문) 코드로 자산군을 합성:
+      국내주식=주식(A010)-주식해외(A014), 국내채권=채권(A005)-채권해외(A009),
+      해외주식=A014, 해외채권=A009, 대체=A015, 단기=A016, 복지·공공=A002+A003, 기타=A017+A018.
+    KOSIS_API_KEY 환경변수가 없으면 None(→ data.go.kr/seed 폴백).
+    """
+    key = os.environ.get("KOSIS_API_KEY", "").strip()
+    if not key:
+        logger.info("KOSIS_API_KEY 없음 → KOSIS 월별 생략")
+        return None
+    raw = _download(KOSIS_FUND_URL.format(key=key), timeout=40)
+    arr = json.loads(raw.decode("utf-8"))
+    if not isinstance(arr, list) or not arr:
+        return None
+    by_period: dict[str, dict] = defaultdict(dict)
+    for r in arr:
+        c2 = r.get("C2")
+        if not c2 or c2 == "01":  # 01=연간 합계행 제외
+            continue
+        try:
+            month = int(c2) - 1
+            year = int(r["PRD_DE"])
+            val = float(r["DT"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if 1 <= month <= 12:
+            by_period[f"{year}-{month:02d}"][r.get("C1")] = val
+    WON = 1_000_000  # 백만원 → 원
+    series: list[dict] = []
+    for period in sorted(by_period):
+        d = by_period[period]
+        def g(k):
+            return d.get(k, 0) or 0
+        total = g("A001")
+        if total <= 0:
+            continue
+        series.append({
+            "period": period,
+            "total": round(total * WON),
+            "domestic_stock": round((g("A010") - g("A014")) * WON),
+            "foreign_stock": round(g("A014") * WON),
+            "domestic_bond": round((g("A005") - g("A009")) * WON),
+            "foreign_bond": round(g("A009") * WON),
+            "alternative": round(g("A015") * WON),
+            "short_term": round(g("A016") * WON),
+            "welfare": round((g("A002") + g("A003")) * WON),
+            "etc": round((g("A017") + g("A018")) * WON),
+        })
+    return series or None
+
+
 def get_fund_portfolio() -> dict | None:
-    """기금 포트폴리오(네트워크 우선 → 정적 seed 폴백). 성공 시 seed를 갱신·커밋한다."""
-    fp = None
-    try:
-        fp = fetch_fund_portfolio()
-    except Exception as exc:
-        logger.warning("기금 포트폴리오 수집 실패: %s", exc)
-    if fp and fp.get("series"):
-        _write_json(SEED_FUND_PORTFOLIO, fp)  # 클라우드(Actions)는 data.go.kr 차단 → 정적 seed 사용
-        logger.info("기금 포트폴리오 %d기간(최신 %s)", len(fp["series"]), fp.get("asOf"))
-        return fp
+    """기금 부문별 평가액 시계열. 기존 seed에 KOSIS 월별(2012~2024)·data.go.kr(~최신월)을 병합.
+
+    seed를 베이스로 깔고 네트워크 결과를 덮어쓰므로, 클라우드(Actions, 해외 IP)에서 data.go.kr이
+    차단돼 최신월(2025~)을 못 받아도 과거 seed 구간은 보존된다. 병합 결과로 seed를 갱신한다.
+    """
+    series_map: dict[str, dict] = {}
+    # ⓪ 기존 seed 베이스 — 네트워크가 일부만 성공해도 과거 구간이 사라지지 않게 한다.
     seed = _read_json(SEED_FUND_PORTFOLIO)
     if seed and seed.get("series"):
-        logger.info("기금 포트폴리오 seed 폴백(%d기간, 최신 %s)", len(seed["series"]), seed.get("asOf"))
-        return seed
-    logger.warning("기금 포트폴리오 데이터 없음")
-    return None
+        for s in seed["series"]:
+            series_map[s["period"]] = s
+    # ① data.go.kr 기금 포트폴리오(연말 2021~ + 최신월)
+    try:
+        dago = fetch_fund_portfolio()
+        if dago and dago.get("series"):
+            for s in dago["series"]:
+                series_map[s["period"]] = s
+    except Exception as exc:
+        logger.warning("기금 포트폴리오(data.go.kr) 수집 실패: %s", exc)
+    # ② KOSIS 월별(2012~2024) — 더 조밀. 겹치는 연말은 동일값으로 덮어씀.
+    try:
+        kosis = fetch_kosis_fund_monthly()
+        if kosis:
+            for s in kosis:
+                series_map[s["period"]] = s
+            logger.info("KOSIS 월별 %d개월(%s~%s)", len(kosis), kosis[0]["period"], kosis[-1]["period"])
+    except Exception as exc:
+        logger.warning("KOSIS 월별 수집 실패: %s", exc)
+    if not series_map:
+        logger.warning("기금 포트폴리오 데이터 없음")
+        return None
+    series = [series_map[p] for p in sorted(series_map)]
+    fp = {"unit": "won", "asOf": series[-1]["period"], "monthlyFrom": series[0]["period"], "series": series}
+    _write_json(SEED_FUND_PORTFOLIO, fp)
+    logger.info("기금 포트폴리오 %d기간(%s~%s)", len(series), series[0]["period"], series[-1]["period"])
+    return fp
 
 
 # ---------- seed (폴백) ----------

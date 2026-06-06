@@ -54,18 +54,21 @@ jobs:
 
       - name: Refresh NPS data
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
+        env:
+          # secret 또는 variable 어디에 등록했든 동작(미등록 시 빈 값 → KOSIS 생략하고 seed 사용)
+          KOSIS_API_KEY: ${{ secrets.KOSIS_API_KEY || vars.KOSIS_API_KEY }}
         run: python fetch_data.py
 
       - name: Commit refreshed data
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         run: |
-          if git diff --quiet -- data.js current.json data/nav_history.json; then
+          if git diff --quiet -- data.js current.json data/nav_history.json data/seed_fund_portfolio.json; then
             echo "No data changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.js current.json data/nav_history.json
+          git add data.js current.json data/nav_history.json data/seed_fund_portfolio.json
           git commit -m "Update NPS data ($(TZ='Asia/Seoul' date +%Y-%m-%d))"
           git push origin HEAD:main
 

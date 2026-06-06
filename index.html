@@ -114,7 +114,7 @@ body.embed .container{padding-top:16px; max-width:none;}
   <section class="pf-nav-chart-wrap" id="fundTotalSection">
     <div class="pf-nav-header">
       <h3>국민연금 기금 전체 자산 추이</h3>
-      <div class="pf-sub">전체 적립금(시가) · 연말 및 최신월 공시 기준</div>
+      <div class="pf-sub">전체 적립금(시가) · 2012~2024 월별(KOSIS) + 2025·2026 공시(공공데이터)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundTotalChart"></div></div>
   </section>
@@ -122,7 +122,7 @@ body.embed .container{padding-top:16px; max-width:none;}
   <section class="pf-nav-chart-wrap" id="fundCompSection">
     <div class="pf-nav-header">
       <h3>자산군별 비중 추이</h3>
-      <div class="pf-sub">국내주식 외 부문은 기금 포트폴리오 공시(연말·최신월) 기준 추정 맥락</div>
+      <div class="pf-sub">국내주식/해외주식/채권/대체투자 등 · 2012~ 월별(KOSIS 기금운용현황 시가)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundCompChart"></div></div>
   </section>
@@ -339,25 +339,32 @@ body.embed .container{padding-top:16px; max-width:none;}
     {key:'short_term',     name:'단기자금', color:'#06b6d4'},
     {key:'etc',            name:'기타',     color:'#94a3b8'},  // 복지+기타부문 합산
   ];
-  function fundPeriodLabel(p){ const a=String(p).split('-'); return a[1]==='12'? a[0]+'말' : a[0]+'.'+(+a[1])+'월'; }
+  function fundPeriodLabel(p){ const a=String(p).split('-'); return a[1]&&a[1]!=='01'? a[0]+'.'+(+a[1]) : a[0]; }
   function _fundSeries(){ const fp=DATA.fundPortfolio; return fp&&fp.series&&fp.series.length? fp.series : null; }
+  // 월별 X축 라벨: 매년 1월과 마지막 포인트만 표시(연도 또는 연.월)
+  function _fundAxisLabel(periods){
+    const N=periods.length;
+    return {color:_textColor(), fontSize:10,
+      interval:(idx,val)=> String(val).slice(5)==='01' || idx===N-1,
+      formatter:v=>fundPeriodLabel(v)};
+  }
 
   function renderFundTotalChart(){
     const el=document.getElementById('npsFundTotalChart'), sec=document.getElementById('fundTotalSection');
     const series=_fundSeries();
     if(!series){ if(sec)sec.style.display='none'; return; }
     if(sec)sec.style.display='';
-    const labels=series.map(s=>fundPeriodLabel(s.period));
+    const periods=series.map(s=>s.period);
     const totals=series.map(s=>s.total||0);
     const tc=_textColor(), gc=_gridColor();
     const primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()||'#2563eb';
     _newChart(el).setOption({
-      grid:{left:62,right:14,top:16,bottom:26},
-      xAxis:{type:'category', data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:11}, axisTick:{show:false}},
+      grid:{left:62,right:16,top:16,bottom:26},
+      xAxis:{type:'category', boundaryGap:false, data:periods, axisLine:{lineStyle:{color:gc}}, axisTick:{show:false}, axisLabel:_fundAxisLabel(periods)},
       yAxis:{type:'value', min:0, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
-      tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return p.axisValue+'<br/>기금 전체 '+fmtKrwJo(p.value);}},
-      series:[{type:'bar', data:totals, barWidth:'52%', itemStyle:{color:primary, borderRadius:[4,4,0,0]},
-        label:{show:true, position:'top', color:tc, fontSize:10, formatter:p=>(p.value/1e12).toFixed(0)+'조'}}]
+      tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return fundPeriodLabel(p.axisValue)+'<br/>기금 전체 '+fmtKrwJo(p.value);}},
+      series:[{type:'line', data:totals, symbol:'none', smooth:false, lineStyle:{color:primary,width:2}, itemStyle:{color:primary},
+        areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:primary+'40'},{offset:1,color:primary+'00'}]}}}]
     });
   }
 
@@ -366,9 +373,13 @@ body.embed .container{padding-top:16px; max-width:none;}
     const series=_fundSeries();
     if(!series){ if(sec)sec.style.display='none'; return; }
     if(sec)sec.style.display='';
-    const labels=series.map(s=>fundPeriodLabel(s.period));
-    // period × sector 금액/비중 행렬
-    const amt=series.map(s=>FUND_SECTORS.map(se=> se.key==='etc' ? ((s.welfare||0)+(s.etc||0)) : (s[se.key]||0)));
+    const periods=series.map(s=>s.period);
+    // period × sector 금액 행렬. 기타(마지막)는 잔차(전체-6대부문)로 둬 합이 정확히 100%가 되게 한다.
+    const amt=series.map(s=>{
+      const main=FUND_SECTORS.slice(0,-1).map(se=> s[se.key]||0);
+      const sum=main.reduce((a,b)=>a+b,0);
+      return main.concat([Math.max(0,(s.total||sum)-sum)]);
+    });
     const pct=series.map((s,i)=>{ const t=s.total || amt[i].reduce((a,b)=>a+b,0); return amt[i].map(v=> t? +(v/t*100).toFixed(2):0); });
     const tc=_textColor(), gc=_gridColor();
     const echSeries=FUND_SECTORS.map((se,j)=>({
@@ -378,12 +389,12 @@ body.embed .container{padding-top:16px; max-width:none;}
       data:pct.map(row=>row[j]),
     }));
     _newChart(el).setOption({
-      grid:{left:44,right:14,top:36,bottom:26},
+      grid:{left:44,right:16,top:36,bottom:26},
       legend:{top:2, textStyle:{color:tc,fontSize:11}, itemWidth:12, itemHeight:8, itemGap:10},
-      xAxis:{type:'category', boundaryGap:false, data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:11}, axisTick:{show:false}},
+      xAxis:{type:'category', boundaryGap:false, data:periods, axisLine:{lineStyle:{color:gc}}, axisTick:{show:false}, axisLabel:_fundAxisLabel(periods)},
       yAxis:{type:'value', min:0, max:100, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:'{value}%'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
-      tooltip:{trigger:'axis', formatter(ps){
-        let s=ps[0].axisValue;
+      tooltip:{trigger:'axis', confine:true, formatter(ps){
+        let s=fundPeriodLabel(ps[0].axisValue);
         ps.slice().reverse().forEach(p=>{ const a=amt[p.dataIndex][p.seriesIndex];
           s+='<br/>'+p.marker+p.seriesName+': '+p.value.toFixed(1)+'%  ('+fmtKrwJo(a)+')'; });
         return s;
