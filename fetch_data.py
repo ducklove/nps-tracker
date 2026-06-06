@@ -48,6 +48,7 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)  # 상폐 종목 폴백
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 SEED_HOLDINGS = os.path.join(DATA, "seed_holdings_latest.json")
+SEED_FUND_PORTFOLIO = os.path.join(DATA, "seed_fund_portfolio.json")
 BASE_NAV = 1000.0
 PRICE_LOOKBACK_DAYS = 16
 
@@ -58,9 +59,28 @@ PUBLIC_NPS_FALLBACK_CSV_URL = (
 )
 PUBLIC_NPS_FALLBACK_DATE = "2024-12-31"
 FNGUIDE_URL = "https://comp.fnguide.com/SVO/WooriRenewal/Inst_Data.asp?strInstCD=49530"
+# 기금 전체·부문별 평가액(시가) — 「국민연금공단_기금 포트폴리오 현황」(연말+최신월 스냅샷, 십억원)
+FUND_PORTFOLIO_PAGE_URL = "https://www.data.go.kr/data/15106894/fileData.do"
+FUND_PORTFOLIO_FALLBACK_CSV_URL = (
+    "https://www.data.go.kr/cmm/cmm/fileDownload.do"
+    "?atchFileId=FILE_000000003647207&fileDetailSn=1&insertDataPrcus=N"
+)
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
 _PUBLIC_CSV_URL_RE = re.compile(r'"contentUrl"\s*:\s*"([^"]+fileDownload\.do[^"]+)"')
+
+# 「기금 포트폴리오 현황」 CSV의 '구분' 행 → 표준 자산군 키
+_FUND_SECTOR_MAP = {
+    "전체 자산(시장가)": "total",
+    "복지부문": "welfare",
+    "금융부문(국내주식)": "domestic_stock",
+    "금융부문(해외주식)": "foreign_stock",
+    "금융부문(국내채권)": "domestic_bond",
+    "금융부문(해외채권)": "foreign_bond",
+    "금융부문(대체투자)": "alternative",
+    "금융부문(단기자금)": "short_term",
+    "기타부문": "etc",
+}
 
 # 공개 CSV는 종목 단축명만 제공하고 일부 메가캡은 표기가 달라 매핑에서 빠질 수 있다.
 # 고가중 종목의 별칭을 명시해 둔다. (value-invest/finance-pi 의 NPS_NAME_ALIASES 이식)
@@ -294,6 +314,84 @@ def fetch_fnguide_shares(resolver) -> dict[str, int]:
     return out
 
 
+# ---------- 기금 전체·부문별 평가액: 「기금 포트폴리오 현황」(data.go.kr) ----------
+def _parse_fund_period(col: str) -> str | None:
+    """컬럼 헤더 → 기준연월. '2026년 2월(십억 원)'→'2026-02', '2025년(십억 원)'→'2025-12'.
+
+    연도가 없는 '현황(말잔_십억원)' 같은 중복 컬럼은 None을 반환해 자연히 제외된다.
+    """
+    m = re.search(r"(\d{4})년\s*(\d{1,2})\s*월", col)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}"
+    m = re.search(r"(\d{4})\s*년", col)
+    if m:
+        return f"{m.group(1)}-12"  # 연도만 표기된 컬럼 = 해당 연말
+    return None
+
+
+def fetch_fund_portfolio() -> dict | None:
+    """「기금 포트폴리오 현황」 CSV → 부문별 평가액(원 단위) 시계열.
+
+    행=부문, 열=기준시점(연말+최신월)인 wide 포맷을 long 시계열로 변환한다.
+    국내주식은 본 대시보드가 일별로 직접 평가하지만, 해외주식·채권·대체투자 등은
+    공개 일별 데이터가 없어 이 공식 스냅샷(연말+최신월)으로만 비중 추이를 그린다.
+    """
+    page = FUND_PORTFOLIO_PAGE_URL
+    csv_url = FUND_PORTFOLIO_FALLBACK_CSV_URL
+    discover = os.getenv("NPS_PUBLIC_DATA_DISCOVER", "1").strip().lower() not in {"0", "false", "no", "off"}
+    if discover:
+        try:
+            html = _download(page).decode("utf-8", "replace")
+            m = _PUBLIC_CSV_URL_RE.search(html)
+            if m:
+                csv_url = m.group(1).replace("&amp;", "&")
+        except Exception as exc:
+            logger.warning("기금 포트폴리오 discover 실패, fallback URL 사용: %s", exc)
+    payload = _download(csv_url, referer=page)
+    rows = list(csv.reader(io.StringIO(_decode_csv(payload))))
+    if len(rows) < 3:
+        return None
+    header = rows[0]
+    periods = {i: p for i, col in enumerate(header) if i and (p := _parse_fund_period(col))}
+    if not periods:
+        return None
+    series_map: dict[str, dict] = {p: {"period": p} for p in periods.values()}
+    for r in rows[1:]:
+        if not r or not r[0].strip():
+            continue
+        key = _FUND_SECTOR_MAP.get(r[0].strip())
+        if not key:
+            continue
+        for i, p in periods.items():
+            if i < len(r):
+                iv = _pi(r[i])
+                if iv is not None:
+                    series_map[p][key] = iv * 1_000_000_000  # 십억원 → 원
+    series = [series_map[p] for p in sorted(series_map) if "total" in series_map[p]]
+    if not series:
+        return None
+    return {"unit": "won", "asOf": series[-1]["period"], "series": series}
+
+
+def get_fund_portfolio() -> dict | None:
+    """기금 포트폴리오(네트워크 우선 → 정적 seed 폴백). 성공 시 seed를 갱신·커밋한다."""
+    fp = None
+    try:
+        fp = fetch_fund_portfolio()
+    except Exception as exc:
+        logger.warning("기금 포트폴리오 수집 실패: %s", exc)
+    if fp and fp.get("series"):
+        _write_json(SEED_FUND_PORTFOLIO, fp)  # 클라우드(Actions)는 data.go.kr 차단 → 정적 seed 사용
+        logger.info("기금 포트폴리오 %d기간(최신 %s)", len(fp["series"]), fp.get("asOf"))
+        return fp
+    seed = _read_json(SEED_FUND_PORTFOLIO)
+    if seed and seed.get("series"):
+        logger.info("기금 포트폴리오 seed 폴백(%d기간, 최신 %s)", len(seed["series"]), seed.get("asOf"))
+        return seed
+    logger.warning("기금 포트폴리오 데이터 없음")
+    return None
+
+
 # ---------- seed (폴백) ----------
 def load_baseline() -> tuple[list[dict], str | None]:
     d = _read_json(SEED_HOLDINGS, {}) or {}
@@ -487,7 +585,7 @@ def _ytd_pct(hist: list[dict], snap: str) -> float | None:
 
 # ---------- 발행 ----------
 def write_outputs(snap_date, source, holdings, total_value, nav,
-                  today_pct, mtd, ytd, hist, kospi):
+                  today_pct, mtd, ytd, hist, kospi, fund_portfolio=None):
     holdings = sorted(holdings, key=lambda h: h["market_value"], reverse=True)
     total_disp = sum(h["market_value"] for h in holdings) or 0
     hjson = [{
@@ -528,6 +626,7 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
             {"name": h["stock_name"], "value": h["market_value"], "changePct": h.get("change_pct")}
             for h in holdings[:TOP_N] if h["market_value"] > 0
         ],
+        "fundPortfolio": fund_portfolio,  # 기금 전체·부문별 평가액 시계열(연말+최신월). 없으면 None.
     }
 
     with open(os.path.join(ROOT, "data.js"), "w", encoding="utf-8") as f:
@@ -658,9 +757,14 @@ def main():
     mtd = _mtd_pct(nav_hist, snap_date)
     ytd = _ytd_pct(nav_hist, snap_date)
 
-    write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd, nav_hist, kospi)
-    logger.info("완료: %s | NAV %.2f | 평가총액 %.3f조 | %d종목 | %d일 | 출처 %s",
-                snap_date, nav, total_value / 1e12, len(valid), len(nav_hist), source)
+    # 기금 전체·부문별 평가액(공식 스냅샷). 국내주식 외 부문의 비중 추이 맥락 제공.
+    fund_portfolio = get_fund_portfolio()
+
+    write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd,
+                  nav_hist, kospi, fund_portfolio)
+    fp_n = len(fund_portfolio["series"]) if fund_portfolio else 0
+    logger.info("완료: %s | NAV %.2f | 국내주식 %.3f조 | %d종목 | %d일 | 기금부문 %d기간 | 출처 %s",
+                snap_date, nav, total_value / 1e12, len(valid), len(nav_hist), fp_n, source)
 
 
 if __name__ == "__main__":

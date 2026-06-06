@@ -46,9 +46,10 @@ header h1{font-size:22px; margin:0 0 6px;}
 .pf-nav-chart-wrap{margin-bottom:26px;}
 .pf-nav-header{margin-bottom:10px;}
 .pf-nav-header h3{font-size:16px; margin:0;}
+.pf-sub{font-size:12px; color:var(--text-secondary); margin-top:3px;}
 .pf-nav-chart-container{height:340px;}
 #npsTreemap{height:560px; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
-#npsNavChart,#npsValueChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+#npsNavChart,#npsValueChart,#npsFundTotalChart,#npsFundCompChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
 
 /* 테이블 */
 .pf-table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
@@ -106,8 +107,24 @@ body.embed .container{padding-top:16px; max-width:none;}
   </section>
 
   <section class="pf-nav-chart-wrap">
-    <div class="pf-nav-header"><h3>총 평가금액 추이</h3></div>
+    <div class="pf-nav-header"><h3>국내주식 평가금액 추이</h3></div>
     <div class="pf-nav-chart-container"><div id="npsValueChart"></div></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap" id="fundTotalSection">
+    <div class="pf-nav-header">
+      <h3>국민연금 기금 전체 자산 추이</h3>
+      <div class="pf-sub">전체 적립금(시가) · 연말 및 최신월 공시 기준</div>
+    </div>
+    <div class="pf-nav-chart-container"><div id="npsFundTotalChart"></div></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap" id="fundCompSection">
+    <div class="pf-nav-header">
+      <h3>자산군별 비중 추이</h3>
+      <div class="pf-sub">국내주식 외 부문은 기금 포트폴리오 공시(연말·최신월) 기준 추정 맥락</div>
+    </div>
+    <div class="pf-nav-chart-container"><div id="npsFundCompChart"></div></div>
   </section>
 
   <section class="pf-nav-chart-wrap">
@@ -181,7 +198,7 @@ body.embed .container{padding-top:16px; max-width:none;}
     document.getElementById('metaAsOf').textContent =
       '기준일 '+(s.asOf||DATA.asOf||'-')+' · 갱신 '+(DATA.lastUpdated||'-')+' · '+(s.count||0)+'종목';
     const cards=[
-      {label:'총 평가금액', value:fmtKrwJo(s.totalValue||0), sub:'NAV '+(s.nav!=null?s.nav.toFixed(2):'-'), cls:''},
+      {label:'국내주식 평가금액', value:fmtKrwJo(s.totalValue||0), sub:'NAV '+(s.nav!=null?s.nav.toFixed(2):'-'), cls:''},
       {label:'오늘', value:fmtPct(s.todayPct), sub:'가중평균 등락률', cls:pctClass(s.todayPct)},
       {label:'MTD', value:fmtPct(s.mtdPct), sub:'전월말 대비', cls:pctClass(s.mtdPct)},
       {label:'YTD', value:fmtPct(s.ytdPct), sub:'연초 대비', cls:pctClass(s.ytdPct)},
@@ -312,10 +329,74 @@ body.embed .container{padding-top:16px; max-width:none;}
     });
   }
 
+  /* ---------- 기금 전체·부문별(공식 스냅샷) ---------- */
+  const FUND_SECTORS=[
+    {key:'domestic_stock', name:'국내주식', color:'#2563eb'},
+    {key:'foreign_stock',  name:'해외주식', color:'#16a34a'},
+    {key:'domestic_bond',  name:'국내채권', color:'#f59e0b'},
+    {key:'foreign_bond',   name:'해외채권', color:'#fbbf24'},
+    {key:'alternative',    name:'대체투자', color:'#a855f7'},
+    {key:'short_term',     name:'단기자금', color:'#06b6d4'},
+    {key:'etc',            name:'기타',     color:'#94a3b8'},  // 복지+기타부문 합산
+  ];
+  function fundPeriodLabel(p){ const a=String(p).split('-'); return a[1]==='12'? a[0]+'말' : a[0]+'.'+(+a[1])+'월'; }
+  function _fundSeries(){ const fp=DATA.fundPortfolio; return fp&&fp.series&&fp.series.length? fp.series : null; }
+
+  function renderFundTotalChart(){
+    const el=document.getElementById('npsFundTotalChart'), sec=document.getElementById('fundTotalSection');
+    const series=_fundSeries();
+    if(!series){ if(sec)sec.style.display='none'; return; }
+    if(sec)sec.style.display='';
+    const labels=series.map(s=>fundPeriodLabel(s.period));
+    const totals=series.map(s=>s.total||0);
+    const tc=_textColor(), gc=_gridColor();
+    const primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()||'#2563eb';
+    _newChart(el).setOption({
+      grid:{left:62,right:14,top:16,bottom:26},
+      xAxis:{type:'category', data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:11}, axisTick:{show:false}},
+      yAxis:{type:'value', min:0, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
+      tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return p.axisValue+'<br/>기금 전체 '+fmtKrwJo(p.value);}},
+      series:[{type:'bar', data:totals, barWidth:'52%', itemStyle:{color:primary, borderRadius:[4,4,0,0]},
+        label:{show:true, position:'top', color:tc, fontSize:10, formatter:p=>(p.value/1e12).toFixed(0)+'조'}}]
+    });
+  }
+
+  function renderFundCompChart(){
+    const el=document.getElementById('npsFundCompChart'), sec=document.getElementById('fundCompSection');
+    const series=_fundSeries();
+    if(!series){ if(sec)sec.style.display='none'; return; }
+    if(sec)sec.style.display='';
+    const labels=series.map(s=>fundPeriodLabel(s.period));
+    // period × sector 금액/비중 행렬
+    const amt=series.map(s=>FUND_SECTORS.map(se=> se.key==='etc' ? ((s.welfare||0)+(s.etc||0)) : (s[se.key]||0)));
+    const pct=series.map((s,i)=>{ const t=s.total || amt[i].reduce((a,b)=>a+b,0); return amt[i].map(v=> t? +(v/t*100).toFixed(2):0); });
+    const tc=_textColor(), gc=_gridColor();
+    const echSeries=FUND_SECTORS.map((se,j)=>({
+      name:se.name, type:'line', stack:'pct', smooth:false, symbol:'none',
+      lineStyle:{width:0}, areaStyle:{opacity:0.88}, emphasis:{focus:'series'},
+      itemStyle:{color:se.color},
+      data:pct.map(row=>row[j]),
+    }));
+    _newChart(el).setOption({
+      grid:{left:44,right:14,top:36,bottom:26},
+      legend:{top:2, textStyle:{color:tc,fontSize:11}, itemWidth:12, itemHeight:8, itemGap:10},
+      xAxis:{type:'category', boundaryGap:false, data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:11}, axisTick:{show:false}},
+      yAxis:{type:'value', min:0, max:100, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:'{value}%'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
+      tooltip:{trigger:'axis', formatter(ps){
+        let s=ps[0].axisValue;
+        ps.slice().reverse().forEach(p=>{ const a=amt[p.dataIndex][p.seriesIndex];
+          s+='<br/>'+p.marker+p.seriesName+': '+p.value.toFixed(1)+'%  ('+fmtKrwJo(a)+')'; });
+        return s;
+      }},
+      series:echSeries
+    });
+  }
+
   function renderCharts(){
     _charts.forEach(c=>c.dispose()); _charts=[];
     if(typeof echarts==='undefined') return;
     renderTreemap(); renderNavWithKospi(); renderValueChart();
+    renderFundTotalChart(); renderFundCompChart();
   }
 
   /* ---------- 부트스트랩 ---------- */
