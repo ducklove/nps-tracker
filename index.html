@@ -89,7 +89,7 @@ header h1{font-size:22px; margin:0 0 6px;}
   <div id="summary" class="pf-summary"></div>
 
   <section class="pf-nav-chart-wrap">
-    <div class="pf-nav-header"><h3>포트폴리오 구성</h3></div>
+    <div class="pf-nav-header"><h3>포트폴리오 구성 (평가액 상위 60)</h3></div>
     <div id="npsTreemap"></div>
   </section>
 
@@ -226,7 +226,7 @@ header h1{font-size:22px; margin:0 0 6px;}
 
   function renderTreemap(){
     const el=document.getElementById('npsTreemap');
-    const data=(DATA.treemap||[]).map(d=>({name:d.name, value:d.value, changePct:d.changePct, itemStyle:{color:treemapColor(d.changePct)}}));
+    const data=(DATA.treemap||[]).slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,60).map(d=>({name:d.name, value:d.value, changePct:d.changePct, itemStyle:{color:treemapColor(d.changePct)}}));
     if(!data.length) return;
     const isDark=_isDark();
     _newChart(el).setOption({

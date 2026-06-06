@@ -1,30 +1,37 @@
 """국민연금(NPS) 국내주식 포트폴리오 정적 대시보드 데이터 생성기.
 
-value-invest의 NPS 로직(공개 보유내역 → 일별 종가 재평가 → NAV)을 독립 정적 사이트용으로 이식.
+value-invest / finance-pi의 NPS 수집 로직(공개 보유내역 → 일별 종가 재평가 → NAV)을
+독립 정적 사이트용으로 이식했다.
 
-데이터 흐름:
-  1) 보유내역: data/seed_holdings_latest.json — value-invest 운영 DB에서 추출한 완전 보유구성.
-     공공데이터포털 「국민연금공단 국내주식 투자정보」를 기반으로 가공된 것으로, 삼성전자 등
-     전 종목(평가액 전체 리스트)을 포함한다.
-  2) 종가: pykrx 단일종목(원주가) → 실패 종목은 yfinance(.KS/.KQ) 폴백
-  3) KOSPI: yfinance(^KS11)
-  4) NAV: 첫 스냅샷 평가총액을 1000으로 고정(총좌수 고정), 현금흐름 없음
-  5) 발행: data.js(window.NPS_DATA), current.json, data/nav_history.json
+보유구성 소스 (우선순위):
+  1) 공공데이터포털 「국민연금공단 국내주식 투자정보」(data.go.kr) — **전 종목·연말 기준 공식 데이터**.
+     discover로 최신 연말판을 찾는다(실패 시 fallback CSV). 공개 CSV에는 보유 주식수가 없으므로
+     연말(source_date) 종가로 추정수량을 환산한 뒤, 그 구성을 고정하고 source_date부터 현재까지
+     각 거래일 종가로 평가해 NAV 시계열을 매번 재계산한다.
+  2) seed(data/seed_holdings_latest.json) — value-invest 운영 DB에서 추출한 구성(폴백).
+     ※ seed는 FnGuide(지분율 5% 대량보유)만 담겨 5% 미만 보유주가 누락된 불완전 구성이므로
+        공공데이터가 받아지지 않을 때만 사용한다.
 
-주의: FnGuide 기관보유 페이지(strInstCD=49530)는 **지분율 5% 이상 대량보유 종목만** 제공하고
-응답도 불안정해, 삼성전자처럼 지분율이 5% 안팎인 대형주가 통째로 누락된다. 따라서 보유구성
-소스로 쓰지 않는다. value-invest와 동일하게 공개데이터 기반 완전 구성(seed)을 사용한다.
+종목코드 매핑: corp_codes(DART 상장사 전체) + stock_meta + aliases, 정확/정규화/prefix 매칭.
+종가: pykrx 단일종목(원주가) → 실패 시 yfinance(.KS/.KQ). KOSPI: yfinance(^KS11).
+NAV: 첫 거래일 평가총액을 1000으로 고정(총좌수 고정), 현금흐름 없음.
+발행: data.js(window.NPS_DATA), current.json, data/nav_history.json.
 
-산출물은 GitHub Actions가 일 1회 커밋하고 GitHub Pages로 배포한다.
+보유구성(지분) 변동은 공개 공시 주기로만 갱신된다(공공데이터=연 1회). 일별 매매는 비공개라
+어떤 소스로도 추적 불가하며, 공시 사이에는 수량 고정 + 가격 변동만 반영된다.
 """
 from __future__ import annotations
 
 import argparse
 import calendar
+import csv
+import io
 import json
 import logging
 import os
+import re
 import sys
+import urllib.request
 from datetime import date, datetime, timedelta
 
 try:  # Windows 콘솔에서도 한글 로그가 깨지지 않도록
@@ -35,11 +42,50 @@ except Exception:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("nps")
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)  # 상폐 종목 폴백 노이즈 억제
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
+SEED_HOLDINGS = os.path.join(DATA, "seed_holdings_latest.json")
 BASE_NAV = 1000.0
-PRICE_LOOKBACK_DAYS = 16  # 전 거래일 종가(등락률)와 휴장일을 흡수할 여유
+PRICE_LOOKBACK_DAYS = 16
+
+PUBLIC_NPS_PAGE_URL = "https://www.data.go.kr/data/3070507/fileData.do"
+PUBLIC_NPS_FALLBACK_CSV_URL = (
+    "https://www.data.go.kr/cmm/cmm/fileDownload.do"
+    "?atchFileId=FILE_000000003558824&fileDetailSn=1&insertDataPrcus=N"
+)
+PUBLIC_NPS_FALLBACK_DATE = "2024-12-31"
+_USER_AGENT = "Mozilla/5.0"
+_PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
+_PUBLIC_CSV_URL_RE = re.compile(r'"contentUrl"\s*:\s*"([^"]+fileDownload\.do[^"]+)"')
+
+# 공개 CSV는 종목 단축명만 제공하고 일부 메가캡은 표기가 달라 매핑에서 빠질 수 있다.
+# 고가중 종목의 별칭을 명시해 둔다. (value-invest/finance-pi 의 NPS_NAME_ALIASES 이식)
+_NPS_NAME_ALIASES = {
+    "삼성전자": "005930", "SK하이닉스": "000660", "LG에너지솔루션": "373220",
+    "삼성바이오로직스": "207940", "현대차": "005380", "기아": "000270",
+    "NAVER": "035420", "셀트리온": "068270", "현대모비스": "012330",
+    "POSCO홀딩스": "005490", "HD현대중공업": "329180", "HD한국조선해양": "009540",
+    "삼성물산": "028260", "LG화학": "051910", "삼성생명": "032830",
+    "한화에어로스페이스": "012450", "삼성SDI": "006400", "카카오": "035720",
+    "크래프톤": "259960", "삼성화재": "000810", "두산에너빌리티": "034020",
+    "기업은행": "024110", "삼성전기": "009150", "삼성에스디에스": "018260",
+    "삼성중공업": "010140", "SK텔레콤": "017670", "LG전자": "066570",
+    "한미반도체": "042700", "HD현대미포": "010620", "SK바이오팜": "326030",
+    "LS ELECTRIC": "010120", "현대차2우B": "005387", "삼성전자우": "005935",
+    "휠라홀딩스": "081660", "HD현대인프라코어": "042670", "아모레G": "002790",
+    "HD현대건설기계": "267270", "DGB금융지주": "139130", "삼성화재우": "000815",
+    "TKG휴켐스": "069260", "DI동일": "001530", "KCC글라스": "344820",
+    "현대차우": "005385", "LG전자우": "066575", "LG화학우": "051915",
+    "아모레퍼시픽우": "090435", "LG생활건강우": "051905", "미래에셋증권2우B": "00680K",
+    "CJ제일제당 우": "097955", "금호석유우": "011785", "유나이티드제약": "033270",
+    "CJ4우(전환)": "00104K", "현대차3우B": "005389", "삼성전기우": "009155",
+    "신세계 I&C": "035510", "KB금융": "105560", "신한지주": "055550",
+    "하나금융지주": "086790", "우리금융지주": "316140", "메리츠금융지주": "138040",
+    "KT&G": "033780", "HMM": "011200", "LG": "003550", "SK": "034730",
+    "LS": "006260", "GS": "078930", "CJ": "001040", "KT": "030200", "S-Oil": "010950",
+}
 
 
 # ---------- 입출력 유틸 ----------
@@ -64,24 +110,151 @@ def _yyyymmdd(iso: str) -> str:
     return iso.replace("-", "")
 
 
-# ---------- 보유내역 ----------
-def load_holdings() -> tuple[list[dict], str]:
-    """완전 보유구성을 로드한다(value-invest 운영 DB에서 추출한 seed).
+def _pf(v):
+    try:
+        return float(str(v).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
 
-    seed는 공개데이터 기반 전 종목 리스트라 삼성전자 등 대형주를 포함한다. 국민연금의
-    보유구성은 분기/연 단위로만 바뀌므로, 일별 변동은 가격에만 반영한다. 더 최신 공개
-    보유내역이 나오면 seed_holdings_latest.json만 교체하면 된다.
+
+def _pi(v):
+    f = _pf(v)
+    return int(f) if f is not None else None
+
+
+# ---------- 종목코드 매핑 ----------
+def _norm_name(s) -> str:
+    return re.sub(r"[\s·._()/-]+", "", str(s or "").upper())
+
+
+def load_resolver():
+    """종목명 → 종목코드 리졸버. corp_codes(DART 상장사 전체) + stock_meta + aliases.
+
+    반환: (정확명 맵, 정규화명 맵, (이름, 코드) 리스트[prefix 매칭용]).
+    공개데이터 단축명과 DART 정식명 차이(예: 한국전력→한국전력공사)는 정규화·prefix로 흡수한다.
     """
-    d = _read_json(os.path.join(DATA, "seed_holdings_latest.json"), {}) or {}
+    exact: dict[str, str] = {}
+    normed: dict[str, str] = {}
+    by_name: list[tuple[str, str]] = []
+    corp = _read_json(os.path.join(DATA, "corp_codes.json"), {}) or {}  # {name: code}
+    for name, code in corp.items():
+        exact.setdefault(name, code)
+        normed.setdefault(_norm_name(name), code)
+        by_name.append((name, code))
+    meta = _read_json(os.path.join(DATA, "stock_meta.json"), {}) or {}  # {code: name}
+    for code, name in meta.items():
+        if name and len(str(code)) == 6:
+            exact.setdefault(str(name).strip(), str(code))
+            normed.setdefault(_norm_name(name), str(code))
+    for name, code in _NPS_NAME_ALIASES.items():
+        exact[name] = code  # 별칭이 우선(덮어쓰기)
+    return exact, normed, by_name
+
+
+def resolve_code(name: str, resolver) -> str:
+    exact, normed, by_name = resolver
+    n = str(name or "").strip()
+    if n in exact:
+        return exact[n]
+    nn = _norm_name(n)
+    if nn in normed:
+        return normed[nn]
+    cands = {code for nm, code in by_name if nm.startswith(n)}  # prefix가 유일할 때만
+    if len(cands) == 1:
+        return next(iter(cands))
+    return ""
+
+
+# ---------- 공공데이터(data.go.kr) ----------
+def _download(url: str, referer: str | None = None, timeout: int = 20) -> bytes:
+    headers = {"User-Agent": _USER_AGENT}
+    if referer:
+        headers["Referer"] = referer
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _decode_csv(payload: bytes) -> str:
+    for enc in ("utf-8-sig", "cp949", "euc-kr"):
+        try:
+            return payload.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return payload.decode("utf-8", "replace")
+
+
+def _discover_public_csv() -> tuple[str, str]:
+    text = _download(PUBLIC_NPS_PAGE_URL).decode("utf-8", "replace")
+    m = _PUBLIC_CSV_URL_RE.search(text)
+    url = m.group(1).replace("&amp;", "&") if m else PUBLIC_NPS_FALLBACK_CSV_URL
+    dm = _PUBLIC_DATASET_RE.search(text)
+    src_date = f"{dm.group(1)[:4]}-{dm.group(1)[4:6]}-{dm.group(1)[6:8]}" if dm else PUBLIC_NPS_FALLBACK_DATE
+    return url, src_date
+
+
+def fetch_public_holdings() -> tuple[list[dict], str]:
+    """공공데이터 CSV에서 보유내역(종목명/연말평가액/지분율)을 파싱. shares는 없음(추정 대상)."""
+    discover = os.getenv("NPS_PUBLIC_DATA_DISCOVER", "1").strip().lower() not in {"0", "false", "no", "off"}
+    csv_url, source_date = PUBLIC_NPS_FALLBACK_CSV_URL, PUBLIC_NPS_FALLBACK_DATE
+    if discover:
+        try:
+            csv_url, source_date = _discover_public_csv()
+        except Exception as exc:
+            logger.warning("공공데이터 discover 실패, fallback URL 사용: %s", exc)
+    payload = _download(csv_url, referer=PUBLIC_NPS_PAGE_URL)
+    reader = csv.DictReader(io.StringIO(_decode_csv(payload)))
+    rows: list[dict] = []
+    for row in reader:
+        rank = _pi(row.get("번호"))
+        name = str(row.get("종목명") or "").strip()
+        amount_eok = _pf(row.get("평가액(억 원)"))
+        ownership = _pf(row.get("지분율(퍼센트)"))
+        if not rank or not name or amount_eok is None:
+            continue
+        rows.append({
+            "name": name,
+            "source_market_value": round(amount_eok * 100_000_000),
+            "ownership_pct": ownership or 0.0,
+            "rank": rank,
+        })
+    return rows, source_date
+
+
+def get_public_holdings() -> tuple[list[dict], str] | None:
+    """공공데이터 보유내역(매핑 완료, 추정수량 전). 실패하거나 매핑이 빈약하면 None."""
+    try:
+        rows, src_date = fetch_public_holdings()
+    except Exception as exc:
+        logger.warning("공공데이터 수집 실패: %s", exc)
+        return None
+    if not rows:
+        return None
+    resolver = load_resolver()
+    resolved = []
+    for r in rows:
+        code = resolve_code(r["name"], resolver)
+        if code and len(code) == 6:
+            item = dict(r)
+            item["stock_code"] = code
+            resolved.append(item)
+    if len(resolved) < 100:
+        logger.warning("공공데이터 코드 매핑 부족(%d) → seed 폴백", len(resolved))
+        return None
+    logger.info("공공데이터 %s: %d종목 중 %d종목 매핑", src_date, len(rows), len(resolved))
+    return resolved, src_date
+
+
+# ---------- seed (폴백) ----------
+def load_baseline() -> tuple[list[dict], str | None]:
+    d = _read_json(SEED_HOLDINGS, {}) or {}
     holdings = [{
         "stock_code": h["stock_code"],
         "stock_name": h["stock_name"],
         "shares": h["shares"],
         "ownership_pct": h.get("ownership_pct", 0),
     } for h in d.get("holdings", []) if h.get("stock_code") and h.get("shares")]
-    src_date = d.get("date", "?")
-    logger.info("보유구성 %d종목 로드 (기준 %s)", len(holdings), src_date)
-    return holdings, f"seed({src_date})"
+    return holdings, d.get("date")
 
 
 # ---------- 종가 ----------
@@ -107,7 +280,7 @@ def fetch_prices_pykrx(codes: list[str], since: str, until: str) -> dict[str, li
                     out[code] = rows
         except Exception:
             pass
-        if (i + 1) % 50 == 0:
+        if (i + 1) % 100 == 0:
             logger.info("pykrx 진행 %d/%d", i + 1, len(codes))
     return out
 
@@ -169,11 +342,46 @@ def _close_on_before(rows: list[dict], target: str) -> tuple[float | None, float
 
 
 # ---------- NAV ----------
-def load_nav_history() -> list[dict]:
+def build_nav_history(holdings: list[dict], prices: dict[str, list[dict]],
+                      start_date: str, snap_date: str) -> list[dict]:
+    """보유구성(shares 고정)을 start_date~snap_date 각 거래일 종가로 평가한 NAV 시계열.
+
+    첫 거래일 평가총액을 NAV 1000으로 고정(총좌수 고정). 종목별 종가는 거래일에 맞춰
+    forward-fill 하여 휴장/누락을 흡수한다.
+    """
+    import pandas as pd
+
+    shares = {h["stock_code"]: h["shares"] for h in holdings}
+    cols = {}
+    for code, qty in shares.items():
+        rows = prices.get(code)
+        if rows and qty:
+            cols[code] = pd.Series({r["date"]: r["close"] for r in rows})
+    if not cols:
+        return []
+    df = pd.DataFrame(cols).sort_index().ffill()
+    df = df[(df.index >= start_date) & (df.index <= snap_date)]
+    if df.empty:
+        return []
+    sh = pd.Series(shares)
+    total = df.mul(sh, axis=1).sum(axis=1, min_count=1)
+    hist: list[dict] = []
+    units = None
+    for d, tv in total.items():
+        if pd.notna(tv) and tv > 0:
+            if units is None:
+                units = tv / BASE_NAV
+            hist.append({
+                "date": str(d), "total_value": round(float(tv)),
+                "nav": float(tv) / units, "total_count": len(shares),
+            })
+    return hist
+
+
+def load_seed_nav_history() -> list[dict]:
     h = _read_json(os.path.join(DATA, "nav_history.json"), None)
     if h is None:
         h = _read_json(os.path.join(DATA, "seed_nav_history.json"), []) or []
-        logger.info("nav_history.json 없음 → seed(%d개)에서 시작", len(h))
     return sorted(h, key=lambda s: s["date"])
 
 
@@ -276,84 +484,126 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "holdings": hjson,
     })
     _write_json(os.path.join(DATA, "nav_history.json"), [{
-        "date": s["date"],
-        "total_value": s["total_value"],
-        "nav": s["nav"],
-        "total_count": s.get("total_count", 0),
+        "date": s["date"], "total_value": s["total_value"],
+        "nav": s["nav"], "total_count": s.get("total_count", 0),
     } for s in hist])
+
+
+def _evaluate_today(holdings, prices, snap_date):
+    """snap_date 기준 보유종목 평가(현재가·등락률·평가액)."""
+    valid = []
+    for h in holdings:
+        price, prev = _close_on_before(prices.get(h["stock_code"], []), snap_date)
+        if price is None:
+            continue
+        item = dict(h)
+        item.update(
+            price=price,
+            change_pct=(price / prev - 1) * 100 if prev else None,
+            market_value=round(price * h["shares"]),
+        )
+        valid.append(item)
+    return valid
 
 
 def main():
     ap = argparse.ArgumentParser(description="국민연금 포트폴리오 대시보드 데이터 생성")
     ap.add_argument("--limit", type=int, default=0, help="테스트용 종목 수 제한")
     ap.add_argument("--until", default=None, help="기준일 상한 YYYY-MM-DD (기본: 오늘)")
+    ap.add_argument("--no-public", action="store_true", help="공공데이터 생략(seed만 사용)")
     args = ap.parse_args()
 
     until = args.until or date.today().isoformat()
-    since = (date.fromisoformat(until) - timedelta(days=PRICE_LOOKBACK_DAYS)).isoformat()
+    pub = None if args.no_public else get_public_holdings()
 
-    holdings, source = load_holdings()
-    if args.limit:
-        holdings = holdings[:args.limit]
-    codes = [h["stock_code"] for h in holdings]
-    logger.info("보유 %d종목, 종가 조회 기간 %s ~ %s", len(codes), since, until)
+    if pub:
+        # --- 공공데이터 경로: 전 종목 구성 + 전 기간 NAV 재계산 ---
+        rows, src_date = pub
+        if args.limit:
+            rows = rows[:args.limit]
+        codes = [r["stock_code"] for r in rows]
+        # 연말 기준일이 휴장일일 수 있어(예: 12-31), 직전 거래일 종가까지 포함하도록 앞당겨 조회
+        since = (date.fromisoformat(src_date) - timedelta(days=10)).isoformat()
+        logger.info("공공데이터 %d종목, 종가 조회 %s ~ %s", len(codes), since, until)
+        prices = fetch_prices_pykrx(codes, since, until)
+        missing = [c for c in codes if c not in prices]
+        if missing:
+            logger.info("pykrx 미수신 %d종목 → yfinance 폴백", len(missing))
+            prices.update(fetch_prices_yf(missing, src_date, until))
 
-    prices = fetch_prices_pykrx(codes, since, until)
-    missing = [c for c in codes if c not in prices]
-    if missing:
-        logger.info("pykrx 미수신 %d종목 → yfinance 폴백", len(missing))
-        prices.update(fetch_prices_yf(missing, since, until))
+        holdings = []
+        for r in rows:
+            p0, _ = _close_on_before(prices.get(r["stock_code"], []), src_date)
+            if p0 and r.get("source_market_value"):
+                holdings.append({
+                    "stock_code": r["stock_code"],
+                    "stock_name": r["name"],
+                    "shares": max(1, round(r["source_market_value"] / p0)),
+                    "ownership_pct": r.get("ownership_pct", 0),
+                })
+        if len(holdings) < 100:
+            logger.warning("추정수량 환산 종목 부족(%d) → seed 폴백", len(holdings))
+            pub = None
+        else:
+            source = f"data.go.kr({src_date})"
+            nav_hist = build_nav_history(holdings, prices, src_date, until)
+            if not nav_hist:
+                logger.error("NAV 시계열 생성 실패")
+                sys.exit(1)
+            snap_date = nav_hist[-1]["date"]
+            valid = _evaluate_today(holdings, prices, snap_date)
+            logger.info("공공데이터 평가: %d/%d종목, 기준일 %s", len(valid), len(holdings), snap_date)
 
-    latest_dates = [rows[-1]["date"] for rows in prices.values() if rows]
-    if not latest_dates:
-        logger.error("가격을 하나도 받지 못했습니다. 네트워크/소스를 확인하세요.")
-        sys.exit(1)
-    snap_date = max(latest_dates)
-    logger.info("기준일(snap_date) = %s", snap_date)
+    if not pub:
+        # --- seed 폴백 경로: seed 구성 + seed NAV 누적 ---
+        holdings, seed_date = load_baseline()
+        if not holdings:
+            logger.error("seed 보유구성이 비어 있습니다.")
+            sys.exit(1)
+        if args.limit:
+            holdings = holdings[:args.limit]
+        source = f"seed({seed_date})"
+        codes = [h["stock_code"] for h in holdings]
+        since = (date.fromisoformat(until) - timedelta(days=PRICE_LOOKBACK_DAYS)).isoformat()
+        logger.info("seed 폴백 %d종목, 종가 조회 %s ~ %s", len(codes), since, until)
+        prices = fetch_prices_pykrx(codes, since, until)
+        missing = [c for c in codes if c not in prices]
+        if missing:
+            prices.update(fetch_prices_yf(missing, since, until))
+        latest = [r[-1]["date"] for r in prices.values() if r]
+        if not latest:
+            logger.error("가격을 받지 못했습니다.")
+            sys.exit(1)
+        snap_date = max(latest)
+        valid = _evaluate_today(holdings, prices, snap_date)
+        prev_hist = [s for s in load_seed_nav_history() if s["date"] < snap_date]
+        total_value = sum(h["market_value"] for h in valid)
+        if prev_hist:
+            units = prev_hist[0]["total_value"] / BASE_NAV
+            nav = total_value / units
+        else:
+            nav = BASE_NAV
+        nav_hist = prev_hist + [{
+            "date": snap_date, "total_value": total_value, "nav": nav, "total_count": len(valid),
+        }]
 
-    valid = []
-    for h in holdings:
-        price, prev = _close_on_before(prices.get(h["stock_code"], []), snap_date)
-        if price is None:
-            continue
-        change_pct = (price / prev - 1) * 100 if prev else None
-        market_value = round(price * h["shares"])
-        item = dict(h)
-        item.update(price=price, change_pct=change_pct, market_value=market_value)
-        valid.append(item)
-
-    priced_ratio = len(valid) / len(holdings) if holdings else 0
-    logger.info("가격 평가 완료: %d/%d종목 (%.0f%%)", len(valid), len(holdings), priced_ratio * 100)
-    if priced_ratio < 0.90:
-        logger.warning("가격 평가 종목 비율이 낮습니다(%.0f%%) — 일부 종목이 누락될 수 있음", priced_ratio * 100)
-
-    total_value = sum(h["market_value"] for h in valid)
+    total_value = nav_hist[-1]["total_value"]
+    nav = nav_hist[-1]["nav"]
     if total_value <= 0:
-        logger.error("total_value=0 — 평가 가능한 종목이 없습니다.")
+        logger.error("total_value=0")
         sys.exit(1)
 
-    hist = [s for s in load_nav_history() if s["date"] < snap_date]
-    if not hist:
-        nav, total_units = BASE_NAV, total_value / BASE_NAV
-    else:
-        total_units = hist[0]["total_value"] / BASE_NAV
-        nav = total_value / total_units
-    new_hist = hist + [{
-        "date": snap_date, "total_value": total_value, "nav": nav, "total_count": len(valid),
-    }]
-
-    dates = [s["date"] for s in new_hist]
+    dates = [s["date"] for s in nav_hist]
     kospi = fetch_kospi(min(dates), max(dates))
     kospi = [k for k in kospi if k["date"] in set(dates)]
 
     today_pct = _today_change_pct(valid)
-    mtd = _mtd_pct(new_hist, snap_date)
-    ytd = _ytd_pct(new_hist, snap_date)
+    mtd = _mtd_pct(nav_hist, snap_date)
+    ytd = _ytd_pct(nav_hist, snap_date)
 
-    write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd, new_hist, kospi)
-    logger.info("완료: %s | NAV %.2f | 평가총액 %.3f조 | %d종목 | 오늘 %s",
-                snap_date, nav, total_value / 1e12, len(valid),
-                f"{today_pct:+.2f}%" if today_pct is not None else "-")
+    write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd, nav_hist, kospi)
+    logger.info("완료: %s | NAV %.2f | 평가총액 %.3f조 | %d종목 | %d일 | 출처 %s",
+                snap_date, nav, total_value / 1e12, len(valid), len(nav_hist), source)
 
 
 if __name__ == "__main__":
