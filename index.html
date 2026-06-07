@@ -106,14 +106,9 @@ body.embed .container{padding-top:16px; max-width:none;}
     <div class="pf-nav-chart-container"><div id="npsNavChart"></div></div>
   </section>
 
-  <section class="pf-nav-chart-wrap">
-    <div class="pf-nav-header"><h3>국내주식 평가금액 추이</h3></div>
-    <div class="pf-nav-chart-container"><div id="npsValueChart"></div></div>
-  </section>
-
   <section class="pf-nav-chart-wrap" id="fundTotalSection">
     <div class="pf-nav-header">
-      <h3>국민연금 기금 자산 추이 (금융부문)</h3>
+      <h3>국민연금 기금 규모</h3>
       <div class="pf-sub">금융부문 6대 자산군 합계(시가) · 2012~ 월별 · 음영=추정(공식 공표 시 자동 교체)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundTotalChart"></div></div>
@@ -315,25 +310,6 @@ body.embed .container{padding-top:16px; max-width:none;}
     });
   }
 
-  function renderValueChart(){
-    const el=document.getElementById('npsValueChart');
-    const vh=DATA.valueHistory||[];
-    if(!vh.length) return;
-    const labels=vh.map(d=>d.date.slice(5));
-    const values=vh.map(d=>d.total_value);
-    let color='#9ca3af';
-    if(vh.length>1){ const w=vh.slice(-30); if(w.length>1){ color=returnToColor((vh[vh.length-1].total_value/w[0].total_value-1)*100,10); } }
-    const tc=_textColor(), gc=_gridColor();
-    _newChart(el).setOption({
-      grid:{left:60,right:14,top:12,bottom:26},
-      xAxis:{type:'category', data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:10}, splitLine:{show:false}},
-      yAxis:{type:'value', scale:true, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
-      tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return p.axisValue+'<br/>'+fmtKrwJo(p.value);}},
-      series:[{type:'line', data:values, symbol:'none', smooth:false, lineStyle:{color:color,width:2}, itemStyle:{color:color},
-        areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:color+'33'},{offset:1,color:color+'00'}]}}}]
-    });
-  }
-
   /* ---------- 기금 전체·부문별(공식 스냅샷) ---------- */
   const FUND_SECTORS=[
     {key:'domestic_stock', name:'국내주식', color:'#2563eb'},
@@ -455,7 +431,7 @@ body.embed .container{padding-top:16px; max-width:none;}
   function renderCharts(){
     _charts.forEach(c=>c.dispose()); _charts=[];
     if(typeof echarts==='undefined') return;
-    renderTreemap(); renderNavWithKospi(); renderValueChart();
+    renderTreemap(); renderNavWithKospi();
     renderFundTotalChart(); renderFundCompChart(); renderFundPieChart();
   }
 

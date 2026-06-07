@@ -862,7 +862,6 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "holdings": top,
         "holdingsTotal": len(hjson),
         "navHistory": [{"date": s["date"], "nav": round(s["nav"], 4)} for s in hist],
-        "valueHistory": [{"date": s["date"], "total_value": s["total_value"]} for s in hist],
         "kospiHistory": kospi,
         "treemap": [
             {"name": h["stock_name"], "value": h["market_value"], "changePct": h.get("change_pct")}
