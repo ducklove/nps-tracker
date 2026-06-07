@@ -122,7 +122,7 @@ body.embed .container{padding-top:16px; max-width:none;}
   <section class="pf-nav-chart-wrap" id="fundCompSection">
     <div class="pf-nav-header">
       <h3>자산군별 비중 추이</h3>
-      <div class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 직전 공표월까지(월별)</div>
+      <div class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별 · 음영=추정(2026.3~)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundCompChart"></div></div>
   </section>
@@ -384,10 +384,8 @@ body.embed .container{padding-top:16px; max-width:none;}
 
   function renderFundCompChart(){
     const el=document.getElementById('npsFundCompChart'), sec=document.getElementById('fundCompSection');
-    const all=_fundSeries();
-    if(!all){ if(sec)sec.style.display='none'; return; }
-    const series=all.filter(s=>!s.estimated);  // 직전 공표월까지(추정은 파이로 분리)
-    if(!series.length){ if(sec)sec.style.display='none'; return; }
+    const series=_fundSeries();  // 전체(공표 + 추정), 추정 구간은 음영으로 구분
+    if(!series){ if(sec)sec.style.display='none'; return; }
     if(sec)sec.style.display='';
     const periods=series.map(s=>s.period);
     const amt=series.map(s=>FUND_SECTORS.map(se=> s[se.key]||0));
@@ -399,6 +397,7 @@ body.embed .container{padding-top:16px; max-width:none;}
       itemStyle:{color:se.color},
       data:pct.map(row=>row[j]),
     }));
+    if(echSeries[0]) echSeries[0].markArea=_fundEstMark(periods);  // 추정 구간 음영
     _newChart(el).setOption({
       grid:{left:44,right:16,top:36,bottom:26},
       legend:{top:2, textStyle:{color:tc,fontSize:11}, itemWidth:12, itemHeight:8, itemGap:10},
@@ -416,29 +415,39 @@ body.embed .container{padding-top:16px; max-width:none;}
 
   // 중기 자산배분 목표비중(%). 단기자금은 잔여 운용이라 목표 0.
   const FUND_TARGET={domestic_stock:20.8, foreign_stock:34.7, domestic_bond:23.1, foreign_bond:7.4, alternative:14.0, short_term:0};
+  // 현재 vs 목표 비중을 가로 그룹막대로 비교(div id는 기존 npsFundPieChart 재사용).
   function renderFundPieChart(){
     const el=document.getElementById('npsFundPieChart'), sec=document.getElementById('fundPieSection');
     const all=_fundSeries();
     if(!all){ if(sec)sec.style.display='none'; return; }
     if(sec)sec.style.display='';
     const latest=all[all.length-1];  // 최신(추정 포함) 시점
-    const cur=FUND_SECTORS.map(se=>({name:se.name, value:latest[se.key]||0, itemStyle:{color:se.color}})).filter(d=>d.value>0).sort((a,b)=>b.value-a.value);
-    const tgt=FUND_SECTORS.map(se=>({name:se.name, value:FUND_TARGET[se.key]||0, itemStyle:{color:se.color}})).filter(d=>d.value>0).sort((a,b)=>b.value-a.value);
-    const tc=_textColor();
+    const tot=FUND_SECTORS.reduce((a,se)=>a+(latest[se.key]||0),0) || 1;
+    // 부문별 현재%/목표%/편차. 목표 큰 순 정렬.
+    const rows=FUND_SECTORS.map(se=>({name:se.name, color:se.color,
+      cur:+((latest[se.key]||0)/tot*100).toFixed(1), tgt:FUND_TARGET[se.key]||0}))
+      .sort((a,b)=>(b.tgt-a.tgt)||(b.cur-a.cur));
+    const cats=rows.map(r=>r.name);
+    const tc=_textColor(), gc=_gridColor();
     const sub=document.getElementById('fundPieSub');
-    if(sub) sub.textContent=fundPeriodLabel(latest.period)+(latest.estimated?' 추정':' 공표')+' 현재 vs 중기 자산배분 목표';
+    if(sub) sub.textContent=fundPeriodLabel(latest.period)+(latest.estimated?' 추정':' 공표')+' 현재 vs 중기 자산배분 목표 · 현재 막대 끝 = 목표 대비 편차(%p)';
     _newChart(el).setOption({
-      tooltip:{trigger:'item', formatter(p){ return p.seriesName+' · '+p.name+'<br/>'+(p.seriesName==='현재'?fmtKrwJo(p.value)+' ':'')+'('+p.percent+'%)'; }},
-      legend:{type:'scroll', bottom:0, textStyle:{color:tc,fontSize:11}, data:FUND_SECTORS.map(s=>s.name)},
-      title:[
-        {text:'현재', left:'25%', top:6, textAlign:'center', textStyle:{color:tc,fontSize:12,fontWeight:600}},
-        {text:'목표', left:'75%', top:6, textAlign:'center', textStyle:{color:tc,fontSize:12,fontWeight:600}}
-      ],
+      grid:{left:66,right:64,top:28,bottom:24},
+      legend:{top:0, right:0, data:['현재','목표'], textStyle:{color:tc,fontSize:11}},
+      tooltip:{trigger:'axis', axisPointer:{type:'shadow'}, formatter(ps){
+        const r=rows[ps[0].dataIndex]; const d=+(r.cur-r.tgt).toFixed(1);
+        return '<strong>'+r.name+'</strong><br/>현재 '+r.cur+'%<br/>목표 '+r.tgt+'%<br/>편차 '+(d>=0?'+':'')+d+'%p';
+      }},
+      xAxis:{type:'value', axisLabel:{formatter:'{value}%',color:tc,fontSize:10}, splitLine:{lineStyle:{color:gc,width:0.5}}, axisLine:{show:false}},
+      yAxis:{type:'category', data:cats, axisLabel:{color:tc,fontSize:11}, axisLine:{lineStyle:{color:gc}}, axisTick:{show:false}},
       series:[
-        {name:'현재', type:'pie', radius:['34%','58%'], center:['25%','52%'], avoidLabelOverlap:true,
-          itemStyle:{borderColor:_isDark()?'#1e293b':'#fff', borderWidth:2}, label:{color:tc,fontSize:10,formatter:'{d}%'}, labelLine:{length:6,length2:6}, data:cur},
-        {name:'목표', type:'pie', radius:['34%','58%'], center:['75%','52%'], avoidLabelOverlap:true,
-          itemStyle:{borderColor:_isDark()?'#1e293b':'#fff', borderWidth:2}, label:{color:tc,fontSize:10,formatter:'{d}%'}, labelLine:{length:6,length2:6}, data:tgt}
+        {name:'현재', type:'bar', barGap:'10%', barWidth:'36%',
+          data:rows.map(r=>({value:r.cur, diff:+(r.cur-r.tgt).toFixed(1), itemStyle:{color:r.color}})),
+          label:{show:true, position:'right', fontSize:10, color:tc,
+            formatter:p=>p.value+'% ('+(p.data.diff>=0?'+':'')+p.data.diff+')'}},
+        {name:'목표', type:'bar', barWidth:'36%',
+          data:rows.map(r=>r.tgt), itemStyle:{color:_isDark()?'#475569':'#cbd5e1'},
+          label:{show:true, position:'right', fontSize:10, color:tc, formatter:'{c}%'}}
       ]
     });
   }
