@@ -15,9 +15,9 @@ on:
         default: true
         type: boolean
   schedule:
-    # 평일 22:37 KST (13:37 UTC) — 장마감 후 종가 확정 시각에 일 1회 갱신.
+    # 평일 20:20 KST (11:20 UTC) — 장마감 후 종가 확정 시각에 일 1회 갱신.
     # 분을 정시(:00~:10)에서 띄움: GitHub 스케줄은 정시 근처 부하로 지연·드롭이 잦음(공식 권고).
-    - cron: "37 13 * * 1-5"
+    - cron: "20 11 * * 1-5"
 
 permissions:
   contents: write
