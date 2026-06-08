@@ -83,6 +83,39 @@ SHEET_COL_MAP = {
 }
 # 금융부문 6대 자산군(전체=이들의 합으로 통일; 공공·복지·기타는 시트에 없고 비중도 미미)
 FUND_SIX = ("domestic_stock", "foreign_stock", "domestic_bond", "foreign_bond", "alternative", "short_term")
+
+# 허브 '분석 도구' 카드에 노출할 자산배분 5종(표시 순서 고정).
+_ALLOCATION_DISPLAY = (
+    ("domestic_stock", "국내주식"),
+    ("foreign_stock", "해외주식"),
+    ("domestic_bond", "국내채권"),
+    ("foreign_bond", "해외채권"),
+    ("alternative", "대체투자"),
+)
+
+
+def _latest_allocation(fund_portfolio: dict | None) -> dict | None:
+    """기금 자산군 시계열의 최신 월을 자산배분 비중(%)으로 요약.
+
+    각 자산군 평가액 / 전체 평가액. 단기자금·기타는 제외하므로 합은 100% 미만.
+    데이터가 없거나 합계를 못 구하면 None(헛값 금지).
+    """
+    series = (fund_portfolio or {}).get("series") or []
+    if not series:
+        return None
+    latest = max(series, key=lambda r: r.get("period") or "")
+    total = latest.get("total") or sum((latest.get(k) or 0) for k, _ in _ALLOCATION_DISPLAY)
+    if not total:
+        return None
+    classes = []
+    for key, label in _ALLOCATION_DISPLAY:
+        value = latest.get(key)
+        if value is None:
+            continue
+        classes.append({"key": key, "label": label, "pct": round(value / total * 100, 1)})
+    if not classes:
+        return None
+    return {"asOf": latest.get("period"), "classes": classes}
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
 _PUBLIC_CSV_URL_RE = re.compile(r'"contentUrl"\s*:\s*"([^"]+fileDownload\.do[^"]+)"')
@@ -878,6 +911,7 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "asOf": snap_date,
         "source": source,
         "summary": summary,
+        "allocation": _latest_allocation(fund_portfolio),
         "holdings": hjson,
     })
     _write_json(os.path.join(DATA, "nav_history.json"), [{
