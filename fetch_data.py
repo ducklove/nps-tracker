@@ -115,7 +115,12 @@ def _latest_allocation(fund_portfolio: dict | None) -> dict | None:
         classes.append({"key": key, "label": label, "pct": round(value / total * 100, 1)})
     if not classes:
         return None
-    return {"asOf": latest.get("period"), "classes": classes}
+    # 최신성 우선: 공표 최신월이 수개월 시차이므로 현재월 추정치를 노출하고 추정 여부만 표시.
+    return {
+        "asOf": latest.get("period"),
+        "estimated": bool(latest.get("estimated")),
+        "classes": classes,
+    }
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
 _PUBLIC_CSV_URL_RE = re.compile(r'"contentUrl"\s*:\s*"([^"]+fileDownload\.do[^"]+)"')
