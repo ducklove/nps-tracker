@@ -61,7 +61,8 @@ header h1{font-size:22px; margin:0 0 6px;}
 .pf-table th.pf-col-name{text-align:left;}
 .pf-table td{padding:9px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap;}
 .pf-table tr:last-child td{border-bottom:none;}
-.pf-col-name{text-align:left;}
+.pf-table td.pf-col-name{text-align:left;}
+.pf-table td.pf-col-num{text-align:right; color:var(--text-secondary); width:1%;}
 .pf-sortable{cursor:pointer; user-select:none;}
 .pf-sortable:hover{color:var(--text);}
 
@@ -132,6 +133,7 @@ body.embed .container{padding-top:16px; max-width:none;}
     <div class="pf-table-wrap">
       <table class="pf-table" id="npsTable">
         <thead><tr>
+          <th>#</th>
           <th class="pf-col-name pf-sortable" data-sort="name">종목명</th>
           <th class="pf-sortable" data-sort="change">등락률</th>
           <th>현재가</th>
@@ -199,7 +201,7 @@ body.embed .container{padding-top:16px; max-width:none;}
       '기준일 '+(s.asOf||DATA.asOf||'-')+' · 갱신 '+(DATA.lastUpdated||'-')+' · '+(s.count||0)+'종목';
     const cards=[
       {label:'국내주식 평가금액', value:fmtKrwJo(s.totalValue||0), sub:'NAV '+(s.nav!=null?s.nav.toFixed(2):'-'), cls:''},
-      {label:'오늘', value:fmtPct(s.todayPct), sub:'가중평균 등락률', cls:pctClass(s.todayPct)},
+      {label:(s.asOf||DATA.asOf||'기준일'), value:fmtPct(s.todayPct), sub:'일간 등락률(가중평균)', cls:pctClass(s.todayPct)},
       {label:'MTD', value:fmtPct(s.mtdPct), sub:'전월말 대비', cls:pctClass(s.mtdPct)},
       {label:'YTD', value:fmtPct(s.ytdPct), sub:'연초 대비', cls:pctClass(s.ytdPct)},
     ];
@@ -222,9 +224,10 @@ body.embed .container{padding-top:16px; max-width:none;}
       const m={change:'change_pct',mv:'market_value',own:'ownership_pct'}[_sortKey];
       const va=a[m]||0, vb=b[m]||0; return _sortAsc? va-vb : vb-va;
     });
-    tbody.innerHTML = rows.map(h=>{
+    tbody.innerHTML = rows.map((h,i)=>{
       const cp=h.change_pct;
       return '<tr>'+
+        '<td class="pf-col-num">'+(i+1)+'</td>'+
         '<td class="pf-col-name">'+h.stock_name+'</td>'+
         '<td class="'+pctClass(cp)+'">'+fmtPct(cp)+'</td>'+
         '<td>'+(h.price?Math.round(h.price).toLocaleString('ko-KR'):'-')+'</td>'+
