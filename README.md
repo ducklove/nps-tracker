@@ -11,28 +11,43 @@
   환산한다. 받지 못하면 seed(`data/seed_holdings_latest.json`)로 폴백한다.
   (FnGuide는 지분율 5% 이상 대량보유만 제공해 5% 미만 보유주가 누락되므로 쓰지 않는다.)
 - **종목코드 매핑**: `data/corp_codes.json`(DART 상장사 전체) + 내장 별칭, 정확/정규화/prefix 매칭.
-- **종가**: KRX(pykrx, 원주가) · 폴백 yfinance(`.KS`/`.KQ`)
+- **종가**: KRX(pykrx, 원주가) · 폴백 yfinance(`.KS`/`.KQ`), 증분 캐시(`data/price_cache.json`, 미커밋)
 - **KOSPI**: yfinance(`^KS11`)
-- **과거 NAV 시계열**(2025-12-30 ~ 2026-05-08): `value-invest` 운영 DB에서 1회 백필(`data/seed_nav_history.json`)
+- **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > data.go.kr > KOSIS > seed + 최근월 추정
 
 ## 구조
 | 파일 | 설명 |
 | --- | --- |
-| `fetch_data.py` | 데이터 수집 · NAV 계산 · 산출물 생성 |
-| `index.html` | 정적 대시보드(ECharts) |
-| `data.js` | 차트 데이터(`window.NPS_DATA`), 자동 생성 |
-| `current.json` | 최신 보유내역 · 요약, 자동 생성 |
-| `data/nav_history.json` | NAV 시계열 누적(seed에서 시작) |
-| `data/seed_*.json` · `data/stock_meta.json` | 백필 seed · 종목코드↔종목명 매핑 |
-| `.github/workflows/` | 일 1회 자동 갱신 · 배포 |
+| `fetch_data.py` | 실행 진입점(thin wrapper) — `python fetch_data.py [--limit N] [--until D] [--no-public] [--refresh-prices]` |
+| `nps_tracker/` | 파이프라인 패키지: `config`(상수·임계값) · `sources/`(소스별 수집: datago/fnguide/kosis/sheet/market) · `resolver` · `nav` · `fund` · `validate`(발행 전 검증 게이트) · `publish` · `cli` |
+| `index.html` + `assets/` | 정적 대시보드(ECharts). `data.json` fetch → `data.js` 폴백(file:// 호환) |
+| `data.js` / `data.json` | 차트 데이터(동일 객체, 자동 생성). `data.js`는 구형 임베드·로컬 열람 호환용 |
+| `current.json` | 전체 보유내역 · 요약 · 자산배분(자동 생성, 허브 등 외부 소비자용) |
+| `data/nav_history.json` | NAV 시계열(매 실행 보유구성 기준일부터 전체 재계산) |
+| `data/seed_*.json` · `data/stock_meta.json` | 폴백 seed · 종목코드↔종목명 매핑 |
+| `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e) — 네트워크 호출 없음 |
+| `.github/workflows/` | `pages.yml` 일 1회 갱신·배포(+가격 캐시, 실패 시 이슈 생성) · `ci.yml` ruff+pytest |
 
 ## NAV 모델
 첫 스냅샷의 평가총액을 NAV 1000으로 고정한다(총좌수 = 첫 평가총액 / 1000). 이후 현금흐름 없이
-평가총액 변동만 NAV에 반영한다. 이는 분리 전 `value-invest`의 `snapshot_nps.py`와 동일한 모델이다.
+평가총액 변동만 NAV에 반영한다. 보유 수량은 연말 공시 추정치(+FnGuide 5%↑ 공시 수량)로 고정되며,
+NAV 시계열은 매 실행 시 기준일부터 전체 재계산된다.
+
+## 검증 게이트
+발행 직전 `nps_tracker/validate.py`가 데이터 정합성을 검사한다.
+**에러**(가격 수신율 < 95%, 새 날짜 일간 NAV ±20% 초과 등)면 발행을 중단하고 기존 산출물을 보존하며
+배치가 실패한다(Actions가 `batch-failure` 이슈 생성). **경고**(일간 NAV ±7% 초과, 가격제한폭 초과 등락,
+스테일 가격, 구성 기준일 400일 경과)는 산출물의 `warnings` 필드로 발행돼 대시보드 배너에 표시된다.
+
+## 산출물 스키마 (v2)
+기존 필드는 불변(외부 소비자 호환), v2에서 `schemaVersion` · `composition{date,source}` · `warnings[]` ·
+`fundPortfolio.targets`(중기 자산배분 목표)가 추가됐다.
 
 ## 로컬 실행
 ```bash
 pip install -r requirements.txt
-python fetch_data.py
+python fetch_data.py            # 산출물(data.js, data.json, current.json, data/nav_history.json) 갱신
+python -m pytest                # 오프라인 테스트 (requirements-dev.txt: pytest, ruff)
+ruff check .
 ```
-산출물(`data.js`, `current.json`, `data/nav_history.json`)이 갱신된다. `index.html`을 브라우저로 열어 확인한다.
+`index.html`을 브라우저로 열어 확인한다(file://에서는 data.js 폴백 경로로 로드된다).

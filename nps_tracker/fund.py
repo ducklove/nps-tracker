@@ -9,7 +9,7 @@ import logging
 from datetime import date
 
 from . import config
-from .config import FUND_SIX, _ALLOCATION_DISPLAY
+from .config import _ALLOCATION_DISPLAY, FUND_SIX
 from .io_utils import _read_json, _write_json
 from .sources.datago import fetch_fund_portfolio
 from .sources.kosis import fetch_kosis_fund_monthly

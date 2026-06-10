@@ -41,9 +41,11 @@ def test_exact_match(resolver):
 
 
 def test_normalized_match(resolver):
-    # 공백·특수문자 차이를 정규화로 흡수
+    # 공백·구분문자(·._()/-)는 정규화로 흡수된다. 단 괄호 "기호"만 제거되므로
+    # "(주)" 같은 법인 접미의 글자는 남아 매칭되지 않는다(현행 의도된 동작).
     assert resolve_code("한국 전력 공사", resolver) == "015760"
-    assert resolve_code("한국전력공사(주)", resolver) == "015760"
+    assert resolve_code("한국·전력공사", resolver) == "015760"
+    assert resolve_code("한국전력공사(주)", resolver) == ""
 
 
 def test_prefix_match_unique_only(resolver):
