@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nps-tracker 리팩토링 보고서 — 구조·품질 평가 및 향후 방향</title>
+<style>
+:root{
+  --bg:#f5f5f5; --surface:#fff; --surface-muted:rgba(148,163,184,.10);
+  --text:#1a1a1a; --text-2:#666; --border:#e0e0e0; --primary:#2563eb;
+  --good:#16a34a; --warn:#d97706; --bad:#dc2626; --info:#0891b2;
+  --code-bg:#f1f5f9;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f172a; --surface:#1e293b; --surface-muted:rgba(148,163,184,.12);
+    --text:#e2e8f0; --text-2:#94a3b8; --border:#334155; --primary:#3b82f6;
+    --good:#4ade80; --warn:#fbbf24; --bad:#f87171; --info:#22d3ee;
+    --code-bg:#0b1222;
+  }
+}
+*{box-sizing:border-box;}
+body{margin:0; background:var(--bg); color:var(--text); font-size:14.5px; line-height:1.65;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;}
+.container{max-width:980px; margin:0 auto; padding:36px 20px 90px;}
+h1{font-size:26px; margin:0 0 4px;}
+h2{font-size:20px; margin:48px 0 14px; padding-top:18px; border-top:1px solid var(--border);}
+h3{font-size:16px; margin:26px 0 10px;}
+p{margin:8px 0;}
+a{color:var(--primary); text-decoration:none;}
+.meta{color:var(--text-2); font-size:12.5px; margin-bottom:22px;}
+.lede{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin:18px 0;}
+.lede strong{color:var(--primary);}
+table{width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; overflow:hidden; font-size:13.5px; margin:12px 0;}
+th{background:var(--surface-muted); text-align:left; padding:9px 12px; font-weight:600; color:var(--text-2);
+  border-bottom:1px solid var(--border); white-space:nowrap;}
+td{padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+code{background:var(--code-bg); border:1px solid var(--border); border-radius:5px; padding:1px 5px;
+  font-size:12.5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+pre{background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:14px 16px;
+  overflow-x:auto; font-size:12.5px; line-height:1.55; margin:10px 0;}
+pre code{background:none; border:none; padding:0;}
+.badge{display:inline-block; border-radius:999px; padding:1px 9px; font-size:11.5px; font-weight:700; white-space:nowrap;}
+.b-bad{background:rgba(220,38,38,.12); color:var(--bad);}
+.b-warn{background:rgba(217,119,6,.13); color:var(--warn);}
+.b-info{background:rgba(8,145,178,.12); color:var(--info);}
+.b-good{background:rgba(22,163,74,.12); color:var(--good);}
+.grade{font-weight:800; font-size:15px;}
+.g-a{color:var(--good);} .g-b{color:var(--info);} .g-c{color:var(--warn);} .g-d{color:var(--bad);}
+.cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin:14px 0;}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px;}
+.card .k{font-size:12px; color:var(--text-2); margin-bottom:4px;}
+.card .v{font-size:19px; font-weight:700;}
+.card .s{font-size:12px; color:var(--text-2); margin-top:4px;}
+ul{margin:8px 0; padding-left:22px;}
+li{margin:4px 0;}
+.flow{display:flex; flex-direction:column; gap:0; margin:16px 0;}
+.flow-row{display:flex; gap:10px; flex-wrap:wrap; align-items:stretch;}
+.node{flex:1; min-width:150px; background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:10px 12px; font-size:12.5px;}
+.node b{display:block; font-size:13px; margin-bottom:3px;}
+.node .t{color:var(--text-2);}
+.node.hl{border-color:var(--primary);}
+.arrow{text-align:center; color:var(--text-2); font-size:16px; padding:2px 0;}
+.toc{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 20px; font-size:13.5px;}
+.toc ol{margin:6px 0; padding-left:20px;}
+.fine{color:var(--text-2); font-size:12.5px;}
+.kbd{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; background:var(--surface-muted);
+  border:1px solid var(--border); border-radius:4px; padding:0 4px;}
+@media print{ body{background:#fff;} .container{max-width:none; padding:0;} h2{break-after:avoid;} pre,table{break-inside:avoid;} }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>nps-tracker 리팩토링 보고서</h1>
+<div class="meta">작성일 2026-06-10 · 분석 대상 커밋 <code>7d5527f</code> (main) · 범위: 전체 코드베이스 (Python 1,051줄 / HTML+JS 485줄 / GitHub Actions 86줄)</div>
+
+<div class="lede">
+<strong>한 줄 진단</strong> — 개인 운영 프로젝트로서 설계 판단과 문서화 수준이 매우 높은 코드베이스다.
+폴백 체인, 추정치 명시, 키 관리 등 "데이터를 정직하게 다루는" 원칙이 잘 지켜지고 있다.
+반면 <b>자동 테스트 0개</b>, <b>발행 전 데이터 검증 부재</b>, <b>매 실행 전체 가격 재수집</b>이라는 세 가지 구조적 약점이
+"공개 대시보드"로서의 신뢰성과 확장성을 제약하고 있다. 리팩토링의 핵심은 코드를 다시 쓰는 것이 아니라
+<b>① 검증·테스트 안전망 구축 → ② 모듈 분리 → ③ 기능 확장</b> 순서로 기반을 다지는 것이다.
+종합 등급: <span class="grade g-b">B−</span>
+</div>
+
+<div class="toc">
+<b>목차</b>
+<ol>
+<li><a href="#overview">프로젝트 개요 및 현재 상태</a></li>
+<li><a href="#arch">시스템 아키텍처</a></li>
+<li><a href="#structure">코드 구조 분석</a></li>
+<li><a href="#quality">품질 평가 (영역별 등급)</a></li>
+<li><a href="#issues">핵심 이슈 목록 (근거 포함)</a></li>
+<li><a href="#refactor">리팩토링 권고안 (Phase 0–2)</a></li>
+<li><a href="#features">향후 기능 로드맵 제언</a></li>
+<li><a href="#conclusion">결론 — 권장 진행 순서</a></li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="overview">1. 프로젝트 개요 및 현재 상태</h2>
+<p>국민연금공단(NPS)의 공개 국내주식 보유내역을 일별 종가로 재평가해 NAV 추이를 KOSPI와 비교하고,
+기금 전체 자산군 비중 추이까지 보여주는 <b>정적 대시보드</b>다. GitHub Actions가 평일 1회(20:20 KST)
+데이터를 갱신·커밋하고 GitHub Pages로 배포한다. 서버·DB·프레임워크가 전혀 없는 极단적으로 단순한 스택이며,
+이 단순함 자체가 이 프로젝트의 가장 큰 자산이다.</p>
+
+<div class="cards">
+<div class="card"><div class="k">코드 규모</div><div class="v">~1.6k 줄</div><div class="s">fetch_data.py 1,051 / index.html 485</div></div>
+<div class="card"><div class="k">자동 테스트</div><div class="v" style="color:var(--bad)">0개</div><div class="s">lint/타입체크/CI 게이트도 없음</div></div>
+<div class="card"><div class="k">현재 데이터 소스</div><div class="v">seed(2024-12-31)</div><div class="s">Actions에서 data.go.kr 차단 → 상시 폴백 운영</div></div>
+<div class="card"><div class="k">일일 갱신 비용</div><div class="v">1,081종목 전량</div><div class="s">~18개월치 가격을 매번 재수집</div></div>
+</div>
+
+<p><b>주목할 운영 사실:</b> 2026-06-09 기준 발행물의 <code>source</code>는 <code>seed(2024-12-31)</code>다.
+즉 보유 <i>구성</i>은 약 18개월 전 연말 공시 기준(+FnGuide 5%↑ 종목만 수시 보정)인데,
+이 사실이 <b>화면 어디에도 표시되지 않는다</b>(<code>DATA.source</code>는 발행되지만 프런트엔드에서 미사용).
+사용자는 "오늘의 국민연금 포트폴리오"로 오인할 수 있다. 또한 최근 NAV가 하루 ±8%대로 출렁였는데
+(06-08 −8.4%, 06-09 +8.4%), 시장 급변동일 수도 있으나 가격 이상치·기업행위(액면분할 등) 왜곡일 가능성을
+걸러줄 검증 장치가 전혀 없이 그대로 발행됐다.</p>
+
+<!-- ============================================================ -->
+<h2 id="arch">2. 시스템 아키텍처</h2>
+
+<div class="flow">
+<div class="flow-row">
+<div class="node"><b>data.go.kr</b><div class="t">보유내역 CSV (연 1회·연말)<br>기금 포트폴리오 현황</div></div>
+<div class="node"><b>FnGuide</b><div class="t">5%↑ 대량보유 수량<br>(HTML 스크레이핑)</div></div>
+<div class="node"><b>KOSIS API</b><div class="t">기금운용현황 월별<br>2012~2024</div></div>
+<div class="node"><b>Google Sheet</b><div class="t">공표 월별 금융부문<br>(사용자 관리 SSOT)</div></div>
+<div class="node"><b>pykrx / yfinance</b><div class="t">일별 종가·KOSPI<br>S&amp;P500·환율</div></div>
+</div>
+<div class="arrow">↓ (실패 시 단계별 폴백: 공공데이터 → seed, pykrx → yfinance, 시트 → KOSIS → seed)</div>
+<div class="flow-row">
+<div class="node hl"><b>fetch_data.py</b><div class="t">종목코드 리졸버 → 추정수량 환산 → NAV 시계열 재계산 → 최근월 추정 모델 → 발행. <b>모든 책임이 단일 파일에 집중</b></div></div>
+</div>
+<div class="arrow">↓ 발행 (매 실행 전체 재생성)</div>
+<div class="flow-row">
+<div class="node"><b>data.js</b><div class="t">window.NPS_DATA<br>상위 100종목 + 차트 (105KB)</div></div>
+<div class="node"><b>current.json</b><div class="t">전체 1,081종목 + 요약<br>(228KB, 지연 로딩·허브용)</div></div>
+<div class="node"><b>data/*.json</b><div class="t">nav_history 누적<br>seed 영속화</div></div>
+</div>
+<div class="arrow">↓ GitHub Actions: 평일 11:20 UTC 커밋 → Pages 배포</div>
+<div class="flow-row">
+<div class="node"><b>index.html</b><div class="t">단일 파일 대시보드 (ECharts CDN) · 테마 · iframe 임베드 · 정렬 테이블</div></div>
+<div class="node"><b>외부 소비자</b><div class="t">value-invest 허브가 current.json·iframe으로 소비</div></div>
+</div>
+</div>
+
+<p>설계 자체는 목적에 잘 맞는다. 문제는 그림의 가운데 상자 하나(<code>fetch_data.py</code>)에
+HTTP 클라이언트, 5개 소스 파서, 종목명 리졸버, NAV 엔진, 추정 모델, 발행기가 전부 들어 있어
+<b>어느 한 소스의 포맷 변경이 전체 파이프라인 코드를 건드리게 되는 구조</b>라는 점이다.</p>
+
+<!-- ============================================================ -->
+<h2 id="structure">3. 코드 구조 분석</h2>
+
+<table>
+<tr><th>파일</th><th>규모</th><th>역할</th><th>평가</th></tr>
+<tr><td><code>fetch_data.py</code></td><td>1,051줄</td><td>수집·계산·발행 전부</td>
+<td>docstring·주석 품질은 탁월(소스별 제약·폴백 사유를 전부 기록). 그러나 7개 이상의 책임이 한 파일에 있고,
+함수 간 암묵 결합(예: <code>main()</code>이 120줄로 오케스트레이션+변환 혼재)으로 단위 테스트가 사실상 불가능한 형태.</td></tr>
+<tr><td><code>index.html</code></td><td>485줄</td><td>대시보드 (CSS+JS 인라인)</td>
+<td>의존성 zero(ECharts CDN 제외), 테마/임베드 처리 깔끔. 다만 5개 차트 렌더 함수에 옵션 보일러플레이트가 반복되고,
+<code>document.write</code>·비이스케이프 <code>innerHTML</code> 등 낡은 패턴이 남아 있음.</td></tr>
+<tr><td><code>.github/workflows/pages.yml</code></td><td>86줄</td><td>갱신+배포 단일 워크플로</td>
+<td>스케줄 시각 선정(정시 회피), 커밋 루프 방지 등 실무 감각이 좋음. 동일 <code>if:</code> 조건이 4개 step에 중복되고,
+실패 시 알림 경로가 없으며, 데이터 갱신과 배포가 한 job이라 분리 재실행이 불가.</td></tr>
+<tr><td><code>data/seed_*.json</code></td><td>—</td><td>폴백·영속 데이터</td>
+<td><code>seed_holdings</code>·<code>seed_fund_portfolio</code>는 실제 사용. <b><code>seed_nav_history.json</code>은 코드 어디서도 읽지 않는 죽은 파일</b>
+(README 16·25행은 여전히 "seed에서 시작·누적"이라고 설명 — 문서/코드 불일치).</td></tr>
+<tr><td><code>requirements.txt</code></td><td>5개</td><td>의존성</td>
+<td>전부 버전 미고정. 코드 주석 스스로 "pykrx 1.2.4에서 엔드포인트 깨짐"을 인지하면서도 고정하지 않음.
+<code>requests</code>는 직접 import하지 않는 미사용 선언.</td></tr>
+<tr><td><code>README.md</code></td><td>38줄</td><td>문서</td>
+<td>데이터 출처·NAV 모델 설명이 명확. 단, 위 seed_nav_history 항목과 "누적" 서술이 실제 동작(매회 전체 재계산)과 다름.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="quality">4. 품질 평가</h2>
+
+<table>
+<tr><th>영역</th><th>등급</th><th>근거 요약</th></tr>
+<tr><td>설계·아키텍처</td><td class="grade g-b">B+</td><td>정적 사이트+일배치라는 선택이 문제에 정확히 맞음. 다층 폴백 체인 설계 우수. 감점: 단일 모듈에 책임 집중.</td></tr>
+<tr><td>가독성·문서화</td><td class="grade g-a">A−</td><td>모든 함수에 "왜"를 설명하는 주석(소스 제약, 단위 환산, 폴백 사유). 감점: README와 코드의 불일치 2건.</td></tr>
+<tr><td>테스트·검증</td><td class="grade g-d">D</td><td>테스트 0개. 파서·리졸버·NAV 엔진·추정 모델 모두 회귀 안전망 없음. 소스 포맷 변경은 조용한 seed 폴백으로만 드러남.</td></tr>
+<tr><td>데이터 신뢰성</td><td class="grade g-c">C</td><td>발행 전 무결성 검사 부재(일간 변동 한계, 가격 결측률, 기업행위). 무제한 forward-fill로 거래정지·상폐 종목이 옛 가격으로 영구 평가됨.</td></tr>
+<tr><td>보안</td><td class="grade g-b">B−</td><td>KOSIS 키를 env로만 받는 점 우수. 감점: 외부 CSV 유래 종목명을 비이스케이프 innerHTML로 렌더, CDN 스크립트 SRI 없음, 의존성 미고정(공급망).</td></tr>
+<tr><td>성능·효율</td><td class="grade g-c">C+</td><td>매 실행 1,081종목 × ~18개월 가격을 순차 HTTP로 전량 재수집(증분 캐시 없음). 프런트는 가벼움.</td></tr>
+<tr><td>운영·자동화</td><td class="grade g-b">B</td><td>스케줄·커밋·배포 자동화 완성. 감점: 실패 알림 없음, 폴백 상시화가 화면에 미노출, 생성물 일일 커밋으로 저장소 비대화 예약(연 ~250커밋 × 330KB 변경).</td></tr>
+<tr><td>프런트엔드</td><td class="grade g-b">B</td><td>무프레임워크·테마·임베드·지연로딩 등 균형 좋음. 감점: document.write, 차트 코드 중복, 데이터 출처 미표시, 접근성(차트 대체 텍스트) 미흡.</td></tr>
+</table>
+
+<h3>잘하고 있는 것 (유지할 원칙)</h3>
+<ul>
+<li><b>정직한 데이터 표현</b>: 추정 구간 음영 표시, "헛값 금지" 원칙(<code>_latest_allocation</code>), 추정수량이라는 컬럼명 — 이 태도는 리팩토링 후에도 1급 원칙으로 유지할 것.</li>
+<li><b>폴백 체인</b>: 시트 &gt; data.go.kr &gt; KOSIS &gt; seed, pykrx → yfinance. 외부 소스가 모두 불안정하다는 현실 인식이 코드에 녹아 있음.</li>
+<li><b>왜를 기록하는 주석</b>: "GitHub 스케줄은 정시 근처 부하로 지연·드롭", "data.go.kr은 간헐적으로 연결을 끊는다" 같은 운영 지식이 코드에 보존됨.</li>
+<li><b>비밀 관리</b>: API 키를 코드/커밋에 두지 않고 env로만 수령.</li>
+<li><b>소비자 배려</b>: TOP_N 분할로 초기 렌더 병목 완화, iframe 임베드용 캐시버스팅·테마 파라미터.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="issues">5. 핵심 이슈 목록</h2>
+<p class="fine">심각도: <span class="badge b-bad">높음</span> 데이터 정확성·신뢰에 직접 영향 /
+<span class="badge b-warn">중간</span> 유지보수·운영 리스크 / <span class="badge b-info">낮음</span> 위생·개선 여지</p>
+
+<table>
+<tr><th style="width:52px">#</th><th style="width:70px">심각도</th><th>이슈</th><th>근거 위치</th></tr>
+<tr><td>I-1</td><td><span class="badge b-bad">높음</span></td>
+<td><b>발행 전 데이터 검증 부재.</b> 일간 NAV ±8% 같은 극단값, 가격 결측률, 0원 가격 등을 점검하지 않고 그대로 발행. 잘못된 데이터가 "공식처럼" 노출될 수 있음.</td>
+<td><code>write_outputs()</code> 직전 검증 단계 없음 (fetch_data.py:1043)</td></tr>
+<tr><td>I-2</td><td><span class="badge b-bad">높음</span></td>
+<td><b>기업행위(액면분할·병합·감자) 미처리.</b> 수량 고정 + 무수정 원주가 모델이라 분할 1건이 해당 종목 평가액을 1/n로 왜곡. 시총 상위 종목이면 NAV 전체가 틀어짐.</td>
+<td>NAV 모델 전제 (fetch_data.py:781–814)</td></tr>
+<tr><td>I-3</td><td><span class="badge b-bad">높음</span></td>
+<td><b>무제한 forward-fill.</b> 거래정지·상폐 종목이 마지막 가격으로 영구 평가에 잔류. 한도(예: 10거래일) 초과 시 제외/경고 필요.</td>
+<td><code>df.sort_index().ffill()</code> (fetch_data.py:798)</td></tr>
+<tr><td>I-4</td><td><span class="badge b-bad">높음</span></td>
+<td><b>구성 기준일·폴백 상태가 UI에 미노출.</b> 현재 18개월 전 구성(seed 2024-12-31)으로 운영 중인데 화면은 "기준일=오늘"만 표시. <code>DATA.source</code>는 만들어 놓고 렌더하지 않음.</td>
+<td>index.html:201–216 (renderSummary), 정적 source-note(91행)</td></tr>
+<tr><td>I-5</td><td><span class="badge b-warn">중간</span></td>
+<td><b>테스트 전무 + 조용한 폴백.</b> 소스 HTML/CSV 포맷이 바뀌면 예외 → 경고 로그 → seed 폴백으로 "성공처럼" 종료. 회귀를 알아챌 방법이 스케줄 로그 열람뿐.</td>
+<td>저장소 전체 (tests/ 부재), <code>except Exception: pass</code> (fetch_data.py:717, 745)</td></tr>
+<tr><td>I-6</td><td><span class="badge b-warn">중간</span></td>
+<td><b>매 실행 전량 재수집.</b> 1,081종목 × ~350거래일을 매일 순차 HTTP로 다시 받음. 실행시간·차단 리스크·외부 부하 모두 불필요하게 큼. 증분 가격 캐시로 95%+ 절감 가능.</td>
+<td>fetch_prices_pykrx 루프 (fetch_data.py:697–721), main()의 since=src_date−10d (964행)</td></tr>
+<tr><td>I-7</td><td><span class="badge b-warn">중간</span></td>
+<td><b>의존성 버전 미고정.</b> pykrx 호환성 깨짐을 이미 겪고도(주석 698행) 미고정. 어느 날 배치가 통째로 실패하거나, 더 나쁘게는 다른 값을 내놓을 수 있음. <code>requests</code>는 미사용 선언.</td>
+<td>requirements.txt</td></tr>
+<tr><td>I-8</td><td><span class="badge b-warn">중간</span></td>
+<td><b>외부 유래 문자열의 비이스케이프 렌더.</b> 종목명(공공 CSV/DART 유래)이 테이블 <code>innerHTML</code>·차트 tooltip HTML에 그대로 삽입. 실위험은 낮으나 정적 사이트의 유일한 주입면이므로 막아둘 가치 충분.</td>
+<td>index.html:230–241, 283</td></tr>
+<tr><td>I-9</td><td><span class="badge b-warn">중간</span></td>
+<td><b>실패 알림 부재.</b> 스케줄 실패·연속 폴백·검증 실패를 사람에게 알리는 경로가 없음(Actions 실패는 기본 메일에 묻힘).</td>
+<td>pages.yml 전체</td></tr>
+<tr><td>I-10</td><td><span class="badge b-info">낮음</span></td>
+<td><b>문서/코드 불일치 + 죽은 파일.</b> <code>seed_nav_history.json</code>은 어디서도 읽지 않음. README의 "NAV 시계열 누적(seed에서 시작)" 서술은 실제(매회 전체 재계산)와 다름.</td>
+<td>README.md:16,25 ↔ fetch_data.py (참조 없음)</td></tr>
+<tr><td>I-11</td><td><span class="badge b-info">낮음</span></td>
+<td><b>도메인 상수의 프런트 하드코딩.</b> 중기 목표비중 <code>FUND_TARGET</code>이 index.html에 박혀 있어 매년 기금운용계획 변경 시 프런트 수정 필요. 데이터 발행물로 옮겨야 함.</td>
+<td>index.html:399</td></tr>
+<tr><td>I-12</td><td><span class="badge b-info">낮음</span></td>
+<td><b>낡은 로딩 패턴·저장소 비대화.</b> <code>document.write</code> 동기 주입(파서 차단·브라우저 경고), 생성물(data.js 105KB + current.json 228KB) 일일 커밋 → 수년 운영 시 clone 비용 증가. 매직 넘버(매핑 임계 100, TOP_N 100 vs 트리맵 60) 산재.</td>
+<td>index.html:155 / pages.yml:63–74 / fetch_data.py:327,883</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="refactor">6. 리팩토링 권고안</h2>
+
+<p>전면 재작성은 권하지 않는다. 현재 코드는 도메인 지식의 결정체이고, 동작도 한다.
+대신 <b>"안전망 먼저, 구조는 그 다음"</b> 원칙으로 3단계를 제안한다.
+각 Phase는 독립적으로 배포 가능하며, 이전 Phase 없이 다음을 진행하면 리스크가 커진다.</p>
+
+<h3>Phase 0 — 안전망과 정직성 (1–2일, 최우선)</h3>
+<p>구조를 건드리기 전에 "틀린 데이터가 조용히 나가는" 경로부터 막는다. I-1, 3, 4, 7, 9, 10 해소.</p>
+<ul>
+<li><b>발행 전 검증 게이트</b> 추가 — 실패 시 발행 중단(기존 데이터 유지)하고 Actions를 실패시켜 알림:
+<pre><code># validate.py (신규) — write_outputs() 직전 호출
+MAX_DAILY_NAV_MOVE_PCT = 7.0      # KOSPI 서킷브레이커 1단계(8%) 미만으로 보수 설정
+MAX_STALE_TRADING_DAYS = 10       # ffill 허용 한도
+MIN_PRICED_RATIO = 0.95           # 가격 수신 종목 비율 하한
+
+def validate(nav_hist, holdings, prices) -> list[str]:
+    errors = []
+    for prev, cur in zip(nav_hist, nav_hist[1:]):
+        move = (cur["nav"] / prev["nav"] - 1) * 100
+        if abs(move) > MAX_DAILY_NAV_MOVE_PCT:
+            errors.append(f"{cur['date']} 일간 NAV {move:+.1f}% — 이상치/기업행위 의심")
+    priced = sum(1 for h in holdings if prices.get(h["stock_code"]))
+    if priced / max(len(holdings), 1) < MIN_PRICED_RATIO:
+        errors.append(f"가격 수신율 {priced}/{len(holdings)} — 소스 장애 의심")
+    return errors</code></pre>
+의심 종목(전일 대비 ±30% 등)은 발행물 <code>warnings</code> 필드에 동봉해 화면에 표시할 수 있게 한다.</li>
+<li><b>ffill 한도</b>: <code>ffill(limit=10)</code> + 한도 초과 종목은 당일 평가 제외·로그. (I-3)</li>
+<li><b>UI에 출처 배지</b>: 요약 카드 옆에 <code>구성 기준 2024-12-31 (연말 공시) · 가격 기준 {asOf}</code>를 항상 노출.
+<code>DATA.source</code>가 seed면 "공시 기준 구성" 안내 문구. (I-4)</li>
+<li><b>의존성 고정</b>: <code>pykrx==1.0.51</code>처럼 검증된 버전으로 핀 + 미사용 <code>requests</code> 제거.
+업그레이드는 의도적 PR로만. (I-7)</li>
+<li><b>실패 알림</b>: 워크플로 마지막에 <code>if: failure()</code> step으로 이슈 자동 생성(또는 Telegram webhook). 연속 seed 폴백 N일째도 경고 대상. (I-9)</li>
+<li><b>청소</b>: <code>seed_nav_history.json</code> 삭제(또는 docs/archive로 이동), README의 "누적" 서술을 "매회 재계산"으로 정정. (I-10)</li>
+</ul>
+
+<h3>Phase 1 — 모듈 분리와 테스트 (1–2주)</h3>
+<p>기능 변화 없이 <code>fetch_data.py</code>를 패키지로 분해한다. 분해 기준은 "외부 소스 1개 = 모듈 1개"
+(소스 포맷 변경의 영향 반경을 파일 1개로 한정). I-2, 5, 6 해소.</p>
+<pre><code>nps_tracker/
+├── config.py          # URL·상수·자산군 맵·임계값 (매직 넘버 집결)
+├── http.py            # _download(재시도·디코딩) — 전 소스 공용
+├── resolver.py        # 종목명→코드 (corp_codes + meta + aliases)
+├── sources/
+│   ├── datago.py      # 보유내역 CSV + 기금 포트폴리오 (discover 포함)
+│   ├── fnguide.py     # 5%↑ 수량 스크레이핑
+│   ├── kosis.py       # 월별 기금운용현황
+│   ├── sheet.py       # Google Sheet 공표값
+│   └── market.py      # pykrx/yfinance 가격·KOSPI·S&P·환율 (+증분 캐시)
+├── nav.py             # NAV 시계열·MTD/YTD·기여도
+├── estimate.py        # 최근월 추정 모델 (가정치도 config로)
+├── validate.py        # Phase 0의 검증 게이트
+└── publish.py         # data.js / current.json / nav_history 발행
+
+fetch_data.py           # 하위호환 진입점: from nps_tracker.cli import main
+tests/
+├── fixtures/           # 각 소스의 실제 응답 스냅샷 (CSV/HTML/JSON)
+├── test_parsers.py     # 골든 파일 → 파싱 결과 고정
+├── test_resolver.py    # 별칭·정규화·prefix 매칭 케이스
+├── test_nav.py         # 소형 합성 데이터로 NAV·ffill 한도·MTD/YTD
+└── test_estimate.py    # 추정 규칙(환율·S&P 반영) 검산</code></pre>
+<ul>
+<li><b>테스트 전략</b>: 외부 HTTP를 모킹하지 말고 <i>실제 응답 스냅샷을 fixtures로 저장</i>해 파서를 고정(골든 테스트).
+소스가 실제로 바뀌면 fixture 갱신 PR로 변경이 가시화된다. NAV 엔진은 3종목·10거래일 합성 데이터로 수치 검산.</li>
+<li><b>가격 증분 캐시</b> (I-6): <code>data/price_cache.json</code>(또는 종목별 분할)에 수집분을 영속화하고,
+실행 시 마지막 캐시일 이후만 조회. 일일 실행이 "1,081종목 × 350일"에서 "1,081종목 × 1–3일"로 줄어
+실행시간·차단 리스크가 급감하고, 과거 가격이 고정되므로 NAV 이력의 재현성도 생긴다.</li>
+<li><b>기업행위 대응</b> (I-2): 검증 게이트가 종목 단위 ±30% 이상 변동을 탐지하면 해당 종목을 격리하고,
+pykrx 수정주가 대비 검산 또는 수량 보정 테이블(<code>data/corporate_actions.json</code>)로 수동 확정하는 절차를 마련.
+완전 자동화보다 "탐지 → 사람 확인" 흐름이 이 규모에 적정.</li>
+<li><b>CI 분리</b>: PR마다 <code>ruff + pytest</code>를 도는 <code>ci.yml</code> 신설. 데이터 갱신 워크플로와 분리해
+코드 변경이 테스트 없이 main에 못 들어가게 함.</li>
+</ul>
+
+<h3>Phase 2 — 프런트엔드 위생 (2–4일)</h3>
+<ul>
+<li><b>data.json 전환</b>: <code>data.js</code>(JSONP식 전역) 대신 <code>data.json</code>을 <code>fetch(..., {cache:'no-store'})</code>로 로딩.
+<code>document.write</code>(I-12)가 사라지고 초기 파싱 차단도 해소. 임베드 캐시버스팅은 그대로 유효.</li>
+<li><b>이스케이프 유틸</b> (I-8): <code>const esc = s =&gt; String(s).replace(/[&amp;&lt;&gt;"']/g, ...)</code> 한 줄을 모든 innerHTML·tooltip 경로에 적용.</li>
+<li><b>파일 분리(빌드 없이)</b>: <code>assets/app.css</code> + <code>assets/app.js</code>(ES module)로만 나눠도 가독성·diff 품질이 크게 개선.
+프레임워크·번들러 도입은 현 규모에서 불필요 — 권하지 않음.</li>
+<li><b>차트 공통화</b>: 축·그리드·테마 보일러플레이트를 <code>baseOption()</code> 팩토리로 묶으면 5개 렌더 함수가 절반 이하로.</li>
+<li><b>도메인 상수 이관</b> (I-11): <code>FUND_TARGET</code>을 fetch_data 발행물(<code>fundPortfolio.targets</code>)로 이동, 출처·기준연도 메모 포함.</li>
+<li><b>CDN 위생</b>: ECharts <code>&lt;script&gt;</code>에 SRI 해시 추가, 로드 실패 시 차트 영역에 안내 문구(현재는 조용히 빈 화면).</li>
+<li><b>저장소 비대화 대비</b> (I-12): 당장 급하지 않으나, 생성물 커밋을 <code>data</code> 전용 브랜치로 옮기거나
+Pages 아티팩트 배포로 전환하는 안을 1년 내 결정 권장. (이력 보존 가치 vs clone 비용의 트레이드오프)</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="features">7. 향후 기능 로드맵 제언</h2>
+
+<p>방향성 제안: 이 프로젝트의 차별점은 "국민연금 데이터를 <b>정직한 가정과 함께</b> 일별로 보여주는 유일한 공개 대시보드"라는 데 있다.
+따라서 기능 확장도 ① 데이터 최신성(공시 반영 속도), ② 해석 가능성(왜 움직였나), ③ 도달성(임베드·공유) 순으로 투자하는 것이 효과적이다.</p>
+
+<h3>단기 (Phase 0–1과 병행 가능, 각 1–3일)</h3>
+<table>
+<tr><th>제안</th><th>내용</th><th>가치</th><th>공수</th></tr>
+<tr><td><b>F-1 일간 기여도 Top10</b></td><td>오늘 NAV 변동을 종목별 기여도(가중 등락)로 분해해 "왜 올랐/내렸나"를 한 줄로. 데이터는 이미 보유(평가액×등락률).</td><td>높음</td><td>낮음</td></tr>
+<tr><td><b>F-2 기간 선택기</b></td><td>NAV 차트에 1M/3M/6M/YTD/전체 토글 + 구간 수익률 표시.</td><td>높음</td><td>낮음</td></tr>
+<tr><td><b>F-3 테이블 검색·필터</b></td><td>종목명 검색, 지분율 5%↑ 필터. 1,081행 지연 로딩과 자연 결합.</td><td>중간</td><td>낮음</td></tr>
+<tr><td><b>F-4 급변동 알림</b></td><td>검증 게이트와 연동해 일간 ±3% 등 조건 시 Telegram/메일 발송(Actions에서 바로 가능).</td><td>중간</td><td>낮음</td></tr>
+</table>
+
+<h3>중기 (Phase 1 완료 후, 각 1–2주)</h3>
+<table>
+<tr><th>제안</th><th>내용</th><th>가치</th><th>공수</th></tr>
+<tr><td><b>F-5 DART 공시 연동</b></td><td>FnGuide 스크레이핑을 DART OpenAPI 「대량보유 상황보고」로 대체/보강. 5%↑ 지분 변동을 공시 당일 반영 — <b>데이터 최신성의 최대 병목(연 1회 공시) 완화</b>. 무료 API 키만 필요.</td><td>매우 높음</td><td>중간</td></tr>
+<tr><td><b>F-6 연말 스냅샷 아카이브</b></td><td>매년 보유내역 원본을 보존하고 YoY 비교 페이지(신규 편입/전량 매도/증감 상위). 연금 데이터 특성상 콘텐츠 가치가 큼.</td><td>높음</td><td>중간</td></tr>
+<tr><td><b>F-7 섹터 분석</b></td><td>KRX 업종분류 매핑으로 섹터별 비중·기여도. 트리맵에 섹터 1단계 추가.</td><td>높음</td><td>중간</td></tr>
+<tr><td><b>F-8 성과 지표</b></td><td>변동성, MDD, KOSPI 대비 초과수익·추적오차. nav_history만으로 계산 가능.</td><td>중간</td><td>낮음</td></tr>
+<tr><td><b>F-9 해외주식 탭</b></td><td>NPS 해외주식 보유내역(연 1회 공개)을 동일 모델로. 모듈 분리(Phase 1)가 끝나면 sources/ 하나 추가로 끝나는 구조.</td><td>중간</td><td>중간</td></tr>
+</table>
+
+<h3>장기 (선택적)</h3>
+<ul>
+<li><b>F-10 임베드 위젯 정식화</b>: <code>current.json</code> 스키마에 버전 필드를 넣고 호환성 정책 문서화 — value-invest 외 외부 소비자 확보.</li>
+<li><b>F-11 영문 모드</b>: NPS는 글로벌 기관투자자 관심 대상. i18n 사전 1개 파일로 충분한 규모.</li>
+<li><b>F-12 의결권·스튜어드십 연계</b>: NPS 의결권 행사 공시를 종목 상세에 연결 — 동종 서비스가 없는 영역.</li>
+<li><b>F-13 OG 카드·PWA</b>: 공유 시 요약 카드 이미지(일배치에서 PNG 생성), 모바일 홈 추가.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="conclusion">8. 결론 — 권장 진행 순서</h2>
+
+<table>
+<tr><th>순서</th><th>작업</th><th>기간</th><th>완료 기준</th></tr>
+<tr><td>1</td><td><b>Phase 0</b>: 검증 게이트 + ffill 한도 + UI 출처 배지 + 의존성 고정 + 실패 알림 + 문서 정리</td><td>1–2일</td><td>"틀린 데이터가 조용히 발행되는" 경로 0건, 폴백 상태가 화면에 보임</td></tr>
+<tr><td>2</td><td>F-1·F-2 (기여도·기간선택) — 사용자 체감 개선을 빠르게 한 번</td><td>2–3일</td><td>대시보드에서 "왜 움직였나"가 보임</td></tr>
+<tr><td>3</td><td><b>Phase 1</b>: 패키지 분리 + 골든 테스트 + 가격 증분 캐시 + CI</td><td>1–2주</td><td>pytest 녹색이 PR 머지 조건, 일일 배치 실행시간 대폭 단축</td></tr>
+<tr><td>4</td><td><b>Phase 2</b>: 프런트 위생 (data.json·이스케이프·파일 분리·상수 이관)</td><td>2–4일</td><td>document.write 제거, 비이스케이프 innerHTML 0건</td></tr>
+<tr><td>5</td><td>F-5 DART 연동 → F-6/F-7 콘텐츠 확장</td><td>이후 순차</td><td>지분 변동이 공시 당일 반영</td></tr>
+</table>
+
+<p>요약하면 — 이 프로젝트는 <b>다시 만들 필요가 없는, 다만 아직 스스로를 검증하지 못하는</b> 코드베이스다.
+Phase 0(이틀)만으로 신뢰성 체감이 가장 크게 오르고, Phase 1의 모듈 분리가 끝나면 이후 모든 기능(F-5~F-9)이
+"sources/ 파일 하나 추가" 수준의 작업으로 떨어진다. 투자 우선순위를 기능이 아니라 안전망에 먼저 두는 것이
+가장 빠른 길이다.</p>
+
+<p class="fine">본 보고서는 커밋 <code>7d5527f</code> 시점의 코드와 데이터 산출물(2026-06-09 배치)을 직접 분석해 작성했다.
+이슈 위치 표기는 해당 시점의 줄 번호 기준이다.</p>
+
+</div>
+</body>
+</html>

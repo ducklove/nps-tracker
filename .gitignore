@@ -5,6 +5,9 @@ venv/
 .cache/
 .claude/
 
+# 가격 증분 캐시 (커밋하지 않음 — GitHub Actions에서는 actions/cache로 영속)
+data/price_cache.json
+
 # 로컬 임시·디버그 산출물 (커밋하지 않음)
 _*.csv
 _*.html
