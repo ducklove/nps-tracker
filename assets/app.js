@@ -347,16 +347,18 @@
       if(!raw.length) return;
       const isDark=_isDark();
       const leaf=d=>({name:d.name, value:d.value, changePct:d.changePct, itemStyle:{color:treemapColor(d.changePct)}});
-      // 업종 정보가 있으면 섹터 1단계 그룹(F-7), 없으면 기존 평면 트리맵(구버전 데이터 호환)
+      // 업종 정보가 있으면 섹터 1단계 그룹(F-7) — 단, 분류가 너무 세분화돼(KIND 산업분류 등)
+      // 그룹이 16개를 넘으면 가독성이 떨어지므로 평면 유지(섹터 분석 섹션이 집계를 대신함).
       let data, levels;
-      if(raw.some(d=>d.sector)){
+      const sectorCount=new Set(raw.filter(d=>d.sector).map(d=>d.sector)).size;
+      if(sectorCount>0 && sectorCount<=16){
         const groups={};
         raw.forEach(d=>{const k=d.sector||'기타'; (groups[k]=groups[k]||[]).push(d);});
         data=Object.keys(groups).map(k=>({name:k, children:groups[k].map(leaf)}));
         levels=[
           {itemStyle:{borderColor:'transparent', gapWidth:3}},
           {upperLabel:{show:true, height:18, fontSize:10, fontWeight:600,
-             color:isDark?'#cbd5e1':'#475569'},
+             color:isDark?'#cbd5e1':'#475569', overflow:'truncate'},
            itemStyle:{color:isDark?'#1e293b':'#f1f5f9',
              borderColor:isDark?'#334155':'#e5e7eb', borderWidth:1, gapWidth:1}},
           {itemStyle:{borderColor:isDark?'#334155':'#e5e7eb', borderWidth:1}}
