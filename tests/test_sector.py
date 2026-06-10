@@ -13,7 +13,7 @@ from nps_tracker.sources import sector
 @pytest.fixture
 def no_fetch(monkeypatch):
     """_fetch_sector_map 호출을 금지(호출되면 실패) — 캐시 적중 경로 검증용."""
-    def _boom(snap_date):
+    def _boom(snap_date, codes_by_value=None):
         raise AssertionError("네트워크 수집이 호출되면 안 됨")
     monkeypatch.setattr(sector, "_fetch_sector_map", _boom)
 
@@ -32,31 +32,72 @@ def test_stale_cache_refetch_and_fallback(tmp_repo, monkeypatch):
     stale_day = (date.today() - timedelta(days=config.SECTOR_CACHE_MAX_AGE_DAYS + 1)).isoformat()
     _write_cache(stale_day, {"005930": "옛업종"})
     # 재수집 성공 → 새 맵으로 교체 + 캐시 갱신
-    monkeypatch.setattr(sector, "_fetch_sector_map", lambda d: {"005930": "전기전자"})
+    monkeypatch.setattr(sector, "_fetch_sector_map", lambda d, c=None: {"005930": "전기전자"})
     assert sector.load_sector_map("2026-06-10") == {"005930": "전기전자"}
     saved = json.load(open(config.SECTOR_CACHE, encoding="utf-8"))
     assert saved["map"] == {"005930": "전기전자"} and saved["fetched"] == date.today().isoformat()
     # 재수집 실패(빈 dict) → 낡은 캐시 폴백
     _write_cache(stale_day, {"005930": "옛업종"})
-    monkeypatch.setattr(sector, "_fetch_sector_map", lambda d: {})
+    monkeypatch.setattr(sector, "_fetch_sector_map", lambda d, c=None: {})
     assert sector.load_sector_map("2026-06-10") == {"005930": "옛업종"}
 
 
 def test_no_cache_no_fetch_returns_empty(tmp_repo, monkeypatch):
-    monkeypatch.setattr(sector, "_fetch_sector_map", lambda d: {})
+    monkeypatch.setattr(sector, "_fetch_sector_map", lambda d, c=None: {})
     assert sector.load_sector_map("2026-06-10") == {}
 
 
-def test_kind_fallback_when_krx_empty(tmp_repo, monkeypatch):
-    """KRX 업종분류가 비면(로그인 미설정) KIND 산업분류로 폴백한다."""
+def test_fallback_chain_krx_kind_dart(tmp_repo, monkeypatch):
+    """KRX → KIND → DART 순서. 앞 단계가 성공하면 뒷 단계를 호출하지 않는다."""
+    boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("호출 금지"))  # noqa: E731
+    # 전부 실패 → 빈 dict
     monkeypatch.setattr(sector, "_fetch_krx_sector_map", lambda d: {})
+    monkeypatch.setattr(sector, "_fetch_kind_sector_map", lambda: {})
+    monkeypatch.setattr(sector, "_fetch_dart_sector_map", lambda codes: {})
+    assert sector._fetch_sector_map("2026-06-10", ["005930"]) == {}
+    # KRX·KIND 실패 → DART 사용
+    monkeypatch.setattr(sector, "_fetch_dart_sector_map", lambda codes: {"005930": "전자부품·통신장비"})
+    assert sector._fetch_sector_map("2026-06-10", ["005930"]) == {"005930": "전자부품·통신장비"}
+    # KIND 성공 → DART 미호출
     monkeypatch.setattr(sector, "_fetch_kind_sector_map", lambda: {"005930": "통신 및 방송 장비 제조업"})
-    assert sector._fetch_sector_map("2026-06-10") == {"005930": "통신 및 방송 장비 제조업"}
-    # KRX가 성공하면 KIND를 호출하지 않는다
+    monkeypatch.setattr(sector, "_fetch_dart_sector_map", boom)
+    assert sector._fetch_sector_map("2026-06-10", ["005930"]) == {"005930": "통신 및 방송 장비 제조업"}
+    # KRX 성공 → KIND·DART 미호출
     monkeypatch.setattr(sector, "_fetch_krx_sector_map", lambda d: {"005930": "전기전자"})
-    monkeypatch.setattr(sector, "_fetch_kind_sector_map",
-                        lambda: (_ for _ in ()).throw(AssertionError("KIND 호출 금지")))
-    assert sector._fetch_sector_map("2026-06-10") == {"005930": "전기전자"}
+    monkeypatch.setattr(sector, "_fetch_kind_sector_map", boom)
+    assert sector._fetch_sector_map("2026-06-10", ["005930"]) == {"005930": "전기전자"}
+
+
+def test_dart_sector_map(tmp_repo, monkeypatch):
+    """기업개황 induty_code 앞 2자리 → KSIC 중분류명. 중단 status면 즉시 종료."""
+    monkeypatch.setenv("DART_API_KEY", "k")
+    monkeypatch.setattr(sector, "load_dart_corp_map",
+                        lambda key: {"005930": "00126380", "005380": "00164742"})
+    responses = {
+        "00126380": {"status": "000", "induty_code": "264"},   # 26 → 전자부품·통신장비
+        "00164742": {"status": "000", "induty_code": "30121"},  # 30 → 자동차
+    }
+    def fake_download(url, **kw):
+        corp = url.split("corp_code=")[1]
+        return json.dumps(responses[corp]).encode()
+    monkeypatch.setattr(sector, "_download", fake_download)
+    out = sector._fetch_dart_sector_map(["005930", "005380", "999999"])  # 매핑 없는 코드는 건너뜀
+    assert out == {"005930": "전자부품·통신장비", "005380": "자동차"}
+    # 사용량 초과(020) → 수집 중단(이후 종목 미조회)
+    calls = []
+    def fake_abort(url, **kw):
+        calls.append(url)
+        return json.dumps({"status": "020", "message": "limit"}).encode()
+    monkeypatch.setattr(sector, "_download", fake_abort)
+    assert sector._fetch_dart_sector_map(["005930", "005380"]) == {}
+    assert len(calls) == 1
+
+
+def test_dart_sector_map_no_key(tmp_repo, monkeypatch):
+    monkeypatch.delenv("DART_API_KEY", raising=False)
+    monkeypatch.setattr(sector, "load_dart_corp_map",
+                        lambda key: (_ for _ in ()).throw(AssertionError("호출 금지")))
+    assert sector._fetch_dart_sector_map(["005930"]) == {}
 
 
 def test_parse_kind_corplist():

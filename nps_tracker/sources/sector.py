@@ -3,15 +3,19 @@
 1순위 KRX 「업종분류현황」(pykrx): KRX 표준 업종(전기전자·서비스업 등 시장별 ~20개).
   단, data.krx.co.kr 이 화면은 로그인을 요구한다 — KRX_ID/KRX_PW 환경변수(데이터포털
   계정)가 있을 때만 성공하고, 없으면 로그인 페이지가 와서 빈 결과가 된다.
-2순위 KIND 상장법인목록(로그인 불필요): 표준산업분류(KSIC) 업종명. KRX 분류보다
-  세분화돼 있지만 익명으로 항상 받을 수 있어 기본 폴백으로 쓴다. 우선주는 목록에
-  없으므로 조회 시 보통주 코드(끝자리 0)로 폴백 매칭한다(sector_for).
+2순위 KIND 상장법인목록(로그인 불필요): 표준산업분류(KSIC) 업종명. 클라우드 IP에서
+  차단될 수 있어(GitHub Actions에서 빈 응답 확인) 시도만 하고 실패를 허용한다.
+3순위 DART 기업개황(company.json): induty_code(KSIC) 앞 2자리 → 중분류명(config.KSIC_DIVISIONS).
+  DART는 Actions에서 검증된 경로이고 corp_code 매핑 캐시를 재사용한다. 평가액 상위
+  SECTOR_DART_MAX 종목만 조회(캐시 만료 주기에만 호출되므로 일배치 부담 없음).
 
+우선주는 목록에 없으므로 조회 시 보통주 코드(끝자리 0)로 폴백 매칭한다(sector_for).
 결과는 data/sector_cache.json에 캐시(30일 경과 시 재수집, 실패 시 낡은 캐시 폴백 —
 DART corpCode와 같은 패턴). 업종 구성은 거의 변하지 않으므로 일배치마다 재수집하지 않는다.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date, timedelta
@@ -19,6 +23,7 @@ from datetime import date, timedelta
 from .. import config
 from ..http import _download
 from ..io_utils import _read_json, _write_json, _yyyymmdd
+from .dart import _ABORT_STATUSES, _dart_key, load_dart_corp_map
 
 logger = logging.getLogger("nps")
 
@@ -74,25 +79,71 @@ def _parse_kind_corplist(html: str) -> dict[str, str]:
 
 
 def _fetch_kind_sector_map() -> dict[str, str]:
-    """KIND 상장법인목록(익명) → {종목코드: 업종명}. 실패 시 빈 dict."""
+    """KIND 상장법인목록(익명) → {종목코드: 업종명}. 실패·빈 결과 시 빈 dict."""
     try:
-        payload = _download(KIND_CORPLIST_URL, timeout=60)
-        return _parse_kind_corplist(payload.decode("euc-kr", "replace"))
+        payload = _download(KIND_CORPLIST_URL, referer="https://kind.krx.co.kr/", timeout=60)
+        out = _parse_kind_corplist(payload.decode("euc-kr", "replace"))
+        logger.info("KIND 상장법인목록: %dB 수신, %d종목 파싱", len(payload), len(out))
+        return out
     except Exception as exc:
         logger.warning("KIND 상장법인목록 수집 실패: %s", exc)
         return {}
 
 
-def _fetch_sector_map(snap_date: str) -> dict[str, str]:
-    """KRX 업종분류(로그인 시) → KIND 산업분류(익명) 순으로 시도."""
+def _fetch_dart_sector_map(codes_by_value: list[str]) -> dict[str, str]:
+    """DART 기업개황 induty_code → KSIC 중분류명. 키 없음·실패 시 빈 dict.
+
+    호출량을 평가액 상위 SECTOR_DART_MAX 종목으로 제한한다(가치 커버리지 98%+).
+    """
+    key = _dart_key()
+    if not key or not codes_by_value:
+        return {}
+    try:
+        corp_map = load_dart_corp_map(key)
+    except Exception as exc:
+        logger.warning("DART corpCode 매핑 실패(섹터 생략): %s", exc)
+        return {}
+    out: dict[str, str] = {}
+    targets = codes_by_value[:config.SECTOR_DART_MAX]
+    for i, code in enumerate(targets):
+        corp = corp_map.get(code) or (corp_map.get(code[:5] + "0") if len(code) == 6 else None)
+        if not corp:
+            continue
+        try:
+            raw = _download(config.DART_COMPANY_URL.format(key=key, corp_code=corp),
+                            timeout=20, retries=2)
+            res = json.loads(raw.decode("utf-8"))
+        except Exception:
+            continue
+        status = str(res.get("status"))
+        if status in _ABORT_STATUSES:
+            logger.warning("DART status=%s(%s) → 섹터 수집 중단", status, res.get("message"))
+            break
+        if status != "000":
+            continue
+        div = re.sub(r"\D", "", str(res.get("induty_code") or ""))[:2]
+        name = config.KSIC_DIVISIONS.get(div)
+        if name:
+            out[code] = name
+        if (i + 1) % 100 == 0:
+            logger.info("DART 기업개황 진행 %d/%d", i + 1, len(targets))
+    return out
+
+
+def _fetch_sector_map(snap_date: str, codes_by_value: list[str] | None = None) -> dict[str, str]:
+    """KRX 업종분류(로그인 시) → KIND 산업분류(익명) → DART 기업개황(KSIC) 순으로 시도."""
     krx = _fetch_krx_sector_map(snap_date)
     if krx:
         logger.info("KRX 업종분류 수신: %d종목", len(krx))
         return krx
     kind = _fetch_kind_sector_map()
     if kind:
-        logger.info("KIND 산업분류 수신(KRX 업종 대신): %d종목", len(kind))
-    return kind
+        logger.info("KIND 산업분류 사용(KRX 업종 대신): %d종목", len(kind))
+        return kind
+    dart = _fetch_dart_sector_map(codes_by_value or [])
+    if dart:
+        logger.info("DART 기업개황 KSIC 업종 사용(KRX·KIND 대신): %d종목", len(dart))
+    return dart
 
 
 def sector_for(code: str, smap: dict[str, str]) -> str | None:
@@ -105,7 +156,7 @@ def sector_for(code: str, smap: dict[str, str]) -> str | None:
     return None
 
 
-def load_sector_map(snap_date: str) -> dict[str, str]:
+def load_sector_map(snap_date: str, codes_by_value: list[str] | None = None) -> dict[str, str]:
     """업종 매핑. 신선한 캐시 → 재수집 → (실패 시) 낡은 캐시 순. 전부 실패하면 빈 dict."""
     cached = _read_json(config.SECTOR_CACHE) or {}
     cmap = cached.get("map") or {}
@@ -116,13 +167,13 @@ def load_sector_map(snap_date: str) -> dict[str, str]:
             age = 10**6
         if age <= config.SECTOR_CACHE_MAX_AGE_DAYS:
             return cmap
-    fresh = _fetch_sector_map(snap_date)
+    fresh = _fetch_sector_map(snap_date, codes_by_value)
     if fresh:
         _write_json(config.SECTOR_CACHE, {"fetched": date.today().isoformat(), "map": fresh})
-        logger.info("KRX 업종분류 갱신: %d종목", len(fresh))
+        logger.info("업종 매핑 갱신: %d종목", len(fresh))
         return fresh
     if cmap:
-        logger.warning("KRX 업종분류 재수집 실패 → 낡은 캐시 사용(%d종목)", len(cmap))
+        logger.warning("업종 재수집 실패 → 낡은 캐시 사용(%d종목)", len(cmap))
     return cmap
 
 
