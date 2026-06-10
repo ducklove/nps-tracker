@@ -15,8 +15,9 @@
 - **종목코드 매핑**: `data/corp_codes.json`(DART 상장사 전체) + 내장 별칭, 정확/정규화/prefix 매칭.
 - **종가**: KRX(pykrx, 원주가) · 폴백 yfinance(`.KS`/`.KQ`), 증분 캐시(`data/price_cache.json`, 미커밋)
 - **KOSPI**: yfinance(`^KS11`)
-- **업종분류**: KRX 업종분류현황(pykrx, `KRX_ID`/`KRX_PW` 데이터포털 계정 필요) → 폴백
-  KIND 상장법인목록 산업분류(익명) — 섹터별 비중·등락·기여도 집계, 30일 캐시(미커밋)
+- **업종분류**: KRX 업종분류현황(pykrx, `KRX_ID`/`KRX_PW` 데이터포털 계정 필요) → KIND
+  상장법인목록(익명, 클라우드 IP 차단 가능) → DART 기업개황 KSIC 중분류(`DART_API_KEY`,
+  평가액 상위 400종목) — 섹터별 비중·등락·기여도 집계, 30일 캐시(미커밋)
 - **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > data.go.kr > KOSIS > seed + 최근월 추정
 - API 키는 환경변수로만 받는다: `DART_API_KEY`(대량보유 공시), `KOSIS_API_KEY`(기금 월별).
   GitHub Actions에서는 저장소 secrets 또는 variables에 등록하면 된다.

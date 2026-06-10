@@ -44,7 +44,7 @@ def pipeline(tmp_repo, monkeypatch):
     monkeypatch.setattr(cli, "fetch_fnguide_shares", lambda resolver: {})
     monkeypatch.setattr(cli, "fetch_dart_nps_shares", lambda holdings: {})
     monkeypatch.setattr(cli, "load_sector_map",
-                        lambda snap_date: {CODES[0]: "전기전자", CODES[1]: "전기전자"})
+                        lambda snap_date, codes=None: {CODES[0]: "전기전자", CODES[1]: "전기전자"})
     monkeypatch.setattr(cli, "get_prices_cached", lambda codes, since, until, refresh=False: dict(prices))
     monkeypatch.setattr(cli, "get_kospi_cached",
                         lambda since, until, refresh=False:
