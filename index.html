@@ -5,10 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>국민연금 국내주식 포트폴리오</title>
 <meta name="description" content="국민연금공단(NPS) 국내주식 보유 포트폴리오를 일별 종가로 재평가한 NAV 추이와 KOSPI 비교 대시보드">
-<link rel="stylesheet" href="assets/app.css?v=2">
+<!-- F-13 공유 카드(OG) — 이미지 카드는 추후 일배치 PNG 생성으로 확장 -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="국민연금 국내주식 포트폴리오 대시보드">
+<meta property="og:description" content="국민연금 보유 국내주식을 일별 종가로 재평가한 NAV·KOSPI 비교, 섹터·기여도 분석">
+<meta property="og:url" content="https://ducklove.github.io/nps-tracker/">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="assets/app.css?v=3">
 <!-- 데이터는 app.js가 data.json(fetch) → data.js(script) 순으로 캐시버스팅 로드해
      iframe 임베드에서도 항상 최신을 보장한다. ECharts는 SRI 적용해 CDN에서 동적 로드. -->
-<script src="assets/app.js?v=2" defer></script>
+<script src="assets/app.js?v=3" defer></script>
 </head>
 <body>
 <div class="container">
@@ -47,6 +54,14 @@
     <div id="npsTreemap"></div>
   </section>
 
+  <section class="pf-nav-chart-wrap" id="sectorSection" style="display:none;">
+    <div class="pf-nav-header">
+      <h3>섹터 분석</h3>
+      <div class="pf-sub" id="sectorSub">KRX 업종분류 기준 · 평가액 가중</div>
+    </div>
+    <div id="sectorBars"></div>
+  </section>
+
   <section class="pf-nav-chart-wrap">
     <div class="pf-nav-header pf-flex-header">
       <h3>NAV 추이 (vs KOSPI)</h3>
@@ -81,6 +96,18 @@
   <section class="pf-nav-chart-wrap" id="fundPieSection">
     <div class="pf-nav-header"><h3>현재 vs 목표 자산군 비중</h3><div class="pf-sub" id="fundPieSub">최신 시점 기준</div></div>
     <div class="pf-nav-chart-container"><div id="npsFundPieChart"></div></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap" id="yoySection" style="display:none;">
+    <div class="pf-nav-header">
+      <h3>연말 구성 변화</h3>
+      <div class="pf-sub" id="yoySub"></div>
+    </div>
+    <div class="contrib-grid yoy-grid">
+      <div class="contrib-col"><div class="contrib-col-title">신규 편입</div><div id="yoyAdded"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">전량 매도</div><div id="yoyRemoved"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">수량 증감 상위</div><div id="yoyChanged"></div></div>
+    </div>
   </section>
 
   <section class="pf-nav-chart-wrap">

@@ -54,7 +54,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 증분 캐시(가격·DART corpCode 매핑)는 git에 커밋하지 않고 actions/cache로 영속한다.
+      # 증분 캐시(가격·DART corpCode·KRX 업종분류)는 git에 커밋하지 않고 actions/cache로 영속한다.
       # key가 run마다 달라 항상 miss → restore-keys로 직전 캐시 복원 → job 종료 시 새 key로 저장.
       - name: Restore price cache
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
@@ -63,6 +63,7 @@ jobs:
           path: |
             data/price_cache.json
             data/dart_corp_codes.json
+            data/sector_cache.json
           key: price-cache-${{ github.run_id }}
           restore-keys: |
             price-cache-
@@ -79,15 +80,61 @@ jobs:
       - name: Commit refreshed data
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         run: |
-          if git diff --quiet -- data.js data.json current.json data/nav_history.json data/seed_fund_portfolio.json; then
+          # add를 먼저 해야 신규 파일(연말 아카이브 등 untracked)도 변경으로 감지된다.
+          git add data.js data.json current.json data/nav_history.json \
+            data/seed_fund_portfolio.json data/seed_holdings_latest.json data/archive
+          if git diff --cached --quiet; then
             echo "No data changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.js data.json current.json data/nav_history.json data/seed_fund_portfolio.json
           git commit -m "Update NPS data ($(TZ='Asia/Seoul' date +%Y-%m-%d))"
           git push origin HEAD:main
+
+      # F-4 급변동 알림: 발행된 NAV 일간 변동이 ±3% 이상이면 라벨 nav-alert 이슈로 알린다
+      # (저장소 watch 중이면 GitHub가 메일 발송 — 별도 토큰 불필요. Telegram 등은 추후 확장).
+      # 같은 asOf 날짜로는 한 번만 알리고, 열린 nav-alert 이슈가 있으면 코멘트만 단다.
+      - name: NAV move alert
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const THRESHOLD_PCT = 3.0;
+            const fs = require('fs');
+            let data;
+            try { data = JSON.parse(fs.readFileSync('data.json', 'utf8')); } catch { return; }
+            const pct = data?.summary?.todayPct;
+            const asOf = data?.summary?.asOf;
+            if (pct == null || !asOf || Math.abs(pct) < THRESHOLD_PCT) return;
+            const label = 'nav-alert';
+            const sign = pct > 0 ? '+' : '';
+            const title = `NAV 급변동 ${sign}${pct.toFixed(2)}% (${asOf})`;
+            const { data: recent } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'all', labels: label, per_page: 20,
+            });
+            if (recent.some(i => i.title.includes(`(${asOf})`))) return;  // 같은 날짜 중복 방지
+            const nav = data?.summary?.nav;
+            const top = (data?.sectors || []).slice(0, 3)
+              .map(s => `${s.name} ${s.changePct == null ? '-' : (s.changePct > 0 ? '+' : '') + s.changePct.toFixed(2)}%`)
+              .join(' · ');
+            const body = `국민연금 국내주식 포트폴리오 NAV가 하루 ${sign}${pct.toFixed(2)}% 움직였습니다 (${asOf}, NAV ${nav}).\n\n` +
+              (top ? `섹터 상위: ${top}\n\n` : '') +
+              `대시보드: https://ducklove.github.io/nps-tracker/\n` +
+              `데이터 경고: ${(data?.warnings || []).length}건`;
+            const open = recent.filter(i => i.state === 'open');
+            if (open.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: open[0].number, body: `**${title}**\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: [label],
+              });
+            }
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

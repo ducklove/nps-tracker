@@ -17,6 +17,11 @@ SEED_FUND_PORTFOLIO = os.path.join(DATA, "seed_fund_portfolio.json")
 NAV_HISTORY = os.path.join(DATA, "nav_history.json")
 # 가격 증분 캐시 — git에 커밋하지 않음(.gitignore). GitHub Actions에서는 actions/cache로 영속.
 PRICE_CACHE = os.path.join(DATA, "price_cache.json")
+# 연말 보유구성 스냅샷 보존 디렉터리(F-6) — 커밋 대상(공시 원본 이력 = 콘텐츠 자산).
+ARCHIVE_DIR = os.path.join(DATA, "archive")
+# KRX 업종분류 캐시(F-7) — 미커밋, Actions에서는 actions/cache로 영속(DART corpCode와 같은 패턴).
+SECTOR_CACHE = os.path.join(DATA, "sector_cache.json")
+SECTOR_CACHE_MAX_AGE_DAYS = 30
 
 # ---------- NAV 모델 ----------
 BASE_NAV = 1000.0
@@ -124,6 +129,14 @@ _NPS_NAME_ALIASES = {
 # ---------- 파이프라인 매직넘버 ----------
 MIN_RESOLVED_HOLDINGS = 100  # 공공데이터 매핑/추정수량 환산 최소 종목 수(미만이면 seed 폴백)
 TOP_N = 100                  # data.js 초기 로딩 상위 종목 수(나머지는 current.json에서 지연 로딩)
+
+# ---------- F-6 연말 스냅샷 YoY ----------
+YOY_LIST_MAX = 15        # 신규 편입/전량 매도 노출 상위 종목 수
+YOY_TOP_CHANGES = 10     # 수량 증감 상위 노출 종목 수
+YOY_MIN_CHANGE_PCT = 0.5  # 수량 변화로 취급할 최소 |증감률|(%) — 그 미만은 라운딩 노이즈
+
+# ---------- F-7 섹터 분석 ----------
+SECTOR_UNMAPPED_LABEL = "기타(미분류)"  # KRX 업종분류에 없는 종목(스팩·신규상장 등) 묶음
 
 # ---------- 검증 게이트 임계값 (validate.py) ----------
 MIN_PRICE_COVERAGE = 0.95        # 가격 수신 종목 비율 하한 — 미만이면 발행 중단(--limit 시 검사 생략)

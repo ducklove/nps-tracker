@@ -28,7 +28,8 @@ def _composition(source: str) -> dict:
 
 
 def write_outputs(snap_date, source, holdings, total_value, nav,
-                  today_pct, mtd, ytd, hist, kospi, fund_portfolio=None, warnings=None):
+                  today_pct, mtd, ytd, hist, kospi, fund_portfolio=None, warnings=None,
+                  sectors=None, yoy=None):
     holdings = sorted(holdings, key=lambda h: h["market_value"], reverse=True)
     total_disp = sum(h["market_value"] for h in holdings) or 0
     hjson = [{
@@ -40,6 +41,7 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "market_value": h["market_value"],
         "change_pct": h.get("change_pct"),
         "weight": (h["market_value"] / total_disp * 100) if total_disp else None,
+        "sector": h.get("sector"),  # v2 추가 — KRX 업종명(미분류 시 null)
     } for h in holdings]
 
     # 초기 로딩은 평가액 상위 TOP_N만(테이블 DOM 렌더 병목 완화). 나머지는 current.json에서 지연 로딩.
@@ -71,7 +73,8 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "navHistory": [{"date": s["date"], "nav": round(s["nav"], 4)} for s in hist],
         "kospiHistory": kospi,
         "treemap": [
-            {"name": h["stock_name"], "value": h["market_value"], "changePct": h.get("change_pct")}
+            {"name": h["stock_name"], "value": h["market_value"], "changePct": h.get("change_pct"),
+             "sector": h.get("sector")}
             for h in holdings[:config.TOP_N] if h["market_value"] > 0
         ],
         "fundPortfolio": fp_out,  # 기금 전체·부문별 평가액 시계열(연말+최신월). 없으면 None.
@@ -79,6 +82,8 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "schemaVersion": config.SCHEMA_VERSION,
         "composition": composition,
         "warnings": warnings,
+        "sectors": sectors or [],  # F-7 섹터별 비중·등락·기여도(업종 매핑 실패 시 빈 배열)
+        "yoy": yoy,                # F-6 연말 구성 YoY 요약(아카이브 2개 미만이면 None)
     }
 
     payload = json.dumps(nps_data, ensure_ascii=False)
@@ -99,6 +104,7 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "schemaVersion": config.SCHEMA_VERSION,
         "composition": composition,
         "warnings": warnings,
+        "sectors": sectors or [],
     })
     _write_json(config.NAV_HISTORY, [{
         "date": s["date"], "total_value": s["total_value"],

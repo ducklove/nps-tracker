@@ -67,7 +67,8 @@ def test_existing_fields_preserved(published):
         {"date": "2026-06-09", "nav": 1033.3333},
     ]
     assert data_json["kospiHistory"] == KOSPI
-    assert data_json["treemap"][0] == {"name": "삼성전자", "value": 20_000, "changePct": 1.5}
+    assert data_json["treemap"][0] == {"name": "삼성전자", "value": 20_000, "changePct": 1.5,
+                                       "sector": None}  # sector는 v2 추가(미매핑 시 null)
 
     # current.json 기존 키(순서 포함 앞쪽 유지) — 한 글자도 변경 금지
     assert list(current.keys())[:6] == ["lastUpdated", "asOf", "source", "summary",

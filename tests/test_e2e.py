@@ -37,12 +37,14 @@ def _public_rows():
 
 @pytest.fixture
 def pipeline(tmp_repo, monkeypatch):
-    """외부 I/O 전부 차단: 공공데이터/FnGuide/가격/KOSPI/기금 모두 고정값."""
+    """외부 I/O 전부 차단: 공공데이터/FnGuide/가격/KOSPI/기금/업종 모두 고정값."""
     prices = _mk_prices()
     monkeypatch.setattr(config, "MIN_RESOLVED_HOLDINGS", 2)  # 합성 3종목용 완화
     monkeypatch.setattr(cli, "get_public_holdings", lambda: (_public_rows(), SRC_DATE))
     monkeypatch.setattr(cli, "fetch_fnguide_shares", lambda resolver: {})
     monkeypatch.setattr(cli, "fetch_dart_nps_shares", lambda holdings: {})
+    monkeypatch.setattr(cli, "load_sector_map",
+                        lambda snap_date: {CODES[0]: "전기전자", CODES[1]: "전기전자"})
     monkeypatch.setattr(cli, "get_prices_cached", lambda codes, since, until, refresh=False: dict(prices))
     monkeypatch.setattr(cli, "get_kospi_cached",
                         lambda since, until, refresh=False:
@@ -78,8 +80,18 @@ def test_e2e_success(pipeline):
     assert data["navHistory"][0]["nav"] == 1000.0
     assert [k["date"] for k in data["kospiHistory"]] == ["2026-01-08", "2026-01-09"]
 
+    # F-7 섹터: 매핑된 2종목 = 전기전자, 미매핑 1종목 = 기타(미분류)
+    secs = {s["name"]: s for s in data["sectors"]}
+    assert set(secs) == {"전기전자", config.SECTOR_UNMAPPED_LABEL}
+    assert secs["전기전자"]["count"] == 2
+    assert abs(sum(s["weightPct"] for s in data["sectors"]) - 100) < 0.1
+    # F-6: 첫 실행 → 기준일 아카이브 생성, 아카이브 1개뿐이라 yoy는 None
+    assert os.path.exists(os.path.join(config.ARCHIVE_DIR, f"holdings_{SRC_DATE}.json"))
+    assert data["yoy"] is None
+
     cur = json.loads((tmp / "current.json").read_text(encoding="utf-8"))
     assert cur["schemaVersion"] == 2 and len(cur["holdings"]) == 3
+    assert cur["sectors"] == data["sectors"]
     assert os.path.exists(config.NAV_HISTORY)
     # 공공데이터 성공 경로 → seed 갱신
     seed = json.loads((tmp / "data" / "seed_holdings_latest.json").read_text(encoding="utf-8"))
@@ -99,6 +111,27 @@ def test_e2e_dart_overrides_fnguide(pipeline, monkeypatch):
     assert shares[CODES[0]] == 999_999  # DART가 FnGuide(111,111)를 덮음
     assert shares[CODES[1]] == 50_000   # DART에 없는 종목은 FnGuide 값
     assert shares[CODES[2]] != 0        # 둘 다 없는 종목은 연말 추정수량 유지
+
+
+def test_e2e_yoy_published_with_prior_archive(pipeline, monkeypatch):
+    """직전 연말 아카이브가 있으면 yoy가 산출돼 발행물에 실린다."""
+    tmp, _ = pipeline
+    # CODES[0]의 새 추정수량은 10e9/10000 = 1,000,000주 → 직전 800,000주 대비 +25%
+    prior = {"date": "2024-12-31", "holdings": [
+        {"stock_code": CODES[0], "stock_name": "종목0", "shares": 800_000, "ownership_pct": 5.0},
+        {"stock_code": "999999", "stock_name": "매도종목", "shares": 500, "ownership_pct": 6.0},
+    ]}
+    os.makedirs(config.ARCHIVE_DIR, exist_ok=True)
+    with open(os.path.join(config.ARCHIVE_DIR, "holdings_2024-12-31.json"), "w", encoding="utf-8") as f:
+        json.dump(prior, f, ensure_ascii=False)
+    cli.main([])
+    data = json.loads((tmp / "data.json").read_text(encoding="utf-8"))
+    yoy = data["yoy"]
+    assert yoy["from"] == "2024-12-31" and yoy["to"] == SRC_DATE
+    assert {a["stock_code"] for a in yoy["added"]} == {CODES[1], CODES[2]}  # 새 구성에만 있는 종목
+    assert [r["stock_code"] for r in yoy["removed"]] == ["999999"]
+    assert [c["stock_code"] for c in yoy["topChanges"]] == [CODES[0]]
+    assert yoy["topChanges"][0]["change_pct"] == 25.0
 
 
 def test_e2e_blocks_on_low_price_coverage(pipeline, monkeypatch):

@@ -11,6 +11,7 @@ import sys
 from datetime import date, timedelta
 
 from . import config
+from .archive import compute_yoy, ensure_archive
 from .fund import get_fund_portfolio, load_baseline, save_baseline
 from .io_utils import _read_json
 from .nav import _evaluate_today, _mtd_pct, _today_change_pct, _ytd_pct, build_nav_history
@@ -20,6 +21,7 @@ from .sources.dart import fetch_dart_nps_shares
 from .sources.datago import get_public_holdings
 from .sources.fnguide import fetch_fnguide_shares
 from .sources.market import _close_on_before, get_kospi_cached, get_prices_cached
+from .sources.sector import aggregate_sectors, load_sector_map
 from .validate import run_validation
 
 logger = logging.getLogger("nps")
@@ -102,6 +104,9 @@ def main(argv=None):
 
     holdings, src_date, source, prices = _load_holdings(args, until)
 
+    # 기준일 구성 원본을 보존(F-6) — --limit 절단 전, 공시수량 갱신 전의 공시 원본이다.
+    ensure_archive(holdings, src_date)
+
     if args.limit:
         holdings = holdings[:args.limit]
 
@@ -141,6 +146,20 @@ def main(argv=None):
     # 기금 전체·부문별 평가액(시트 공표 + KOSIS + 추정). 추정월 국내주식엔 본 사이트 일별 평가액 사용.
     fund_portfolio = get_fund_portfolio(nav_hist)
 
+    # 섹터 분석(F-7): KRX 업종분류를 평가 종목에 부착해 섹터별 비중·등락·기여도 집계.
+    sector_map = load_sector_map(snap_date)
+    for h in valid:
+        sec = sector_map.get(h["stock_code"])
+        if sec:
+            h["sector"] = sec
+    sectors = aggregate_sectors(valid)
+    if sectors:
+        logger.info("섹터 집계: %d개 섹터(미분류 %d종목)",
+                    len(sectors), sum(1 for h in valid if not h.get("sector")))
+
+    # 연말 구성 YoY(F-6): 아카이브 2개 이상부터 산출(없으면 None → 발행물에서 생략).
+    yoy = compute_yoy(prices)
+
     # 검증 게이트: 에러면 발행하지 않고 종료(기존 산출물 보존). 경고는 발행물에 포함.
     errors, warnings = run_validation(
         holdings=holdings, evaluated=valid, prices=prices, nav_hist=nav_hist,
@@ -156,7 +175,8 @@ def main(argv=None):
         sys.exit(2)
 
     write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd,
-                  nav_hist, kospi, fund_portfolio, warnings=warnings)
+                  nav_hist, kospi, fund_portfolio, warnings=warnings,
+                  sectors=sectors, yoy=yoy)
     fp_n = len(fund_portfolio["series"]) if fund_portfolio else 0
     logger.info("완료: %s | NAV %.2f | 국내주식 %.3f조 | %d종목 | %d일 | 기금부문 %d기간 | 출처 %s",
                 snap_date, nav, total_value / 1e12, len(valid), len(nav_hist), fp_n, source)

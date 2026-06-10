@@ -35,4 +35,6 @@ def tmp_repo(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "NAV_HISTORY", str(data / "nav_history.json"))
     monkeypatch.setattr(config, "PRICE_CACHE", str(data / "price_cache.json"))
     monkeypatch.setattr(config, "DART_CORP_CACHE", str(data / "dart_corp_codes.json"))
+    monkeypatch.setattr(config, "ARCHIVE_DIR", str(data / "archive"))
+    monkeypatch.setattr(config, "SECTOR_CACHE", str(data / "sector_cache.json"))
     return tmp_path

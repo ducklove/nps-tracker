@@ -15,6 +15,7 @@
 - **종목코드 매핑**: `data/corp_codes.json`(DART 상장사 전체) + 내장 별칭, 정확/정규화/prefix 매칭.
 - **종가**: KRX(pykrx, 원주가) · 폴백 yfinance(`.KS`/`.KQ`), 증분 캐시(`data/price_cache.json`, 미커밋)
 - **KOSPI**: yfinance(`^KS11`)
+- **업종분류**: KRX 업종분류현황(pykrx) — 섹터별 비중·등락·기여도 집계, 30일 캐시(미커밋)
 - **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > data.go.kr > KOSIS > seed + 최근월 추정
 - API 키는 환경변수로만 받는다: `DART_API_KEY`(대량보유 공시), `KOSIS_API_KEY`(기금 월별).
   GitHub Actions에서는 저장소 secrets 또는 variables에 등록하면 된다.
@@ -23,14 +24,15 @@
 | 파일 | 설명 |
 | --- | --- |
 | `fetch_data.py` | 실행 진입점(thin wrapper) — `python fetch_data.py [--limit N] [--until D] [--no-public] [--refresh-prices]` |
-| `nps_tracker/` | 파이프라인 패키지: `config`(상수·임계값) · `sources/`(소스별 수집: datago/fnguide/kosis/sheet/market) · `resolver` · `nav` · `fund` · `validate`(발행 전 검증 게이트) · `publish` · `cli` |
+| `nps_tracker/` | 파이프라인 패키지: `config`(상수·임계값) · `sources/`(소스별 수집: datago/fnguide/dart/kosis/sheet/market/sector) · `resolver` · `nav` · `fund` · `archive`(연말 스냅샷·YoY) · `validate`(발행 전 검증 게이트) · `publish` · `cli` |
 | `index.html` + `assets/` | 정적 대시보드(ECharts). `data.json` fetch → `data.js` 폴백(file:// 호환) |
 | `data.js` / `data.json` | 차트 데이터(동일 객체, 자동 생성). `data.js`는 구형 임베드·로컬 열람 호환용 |
 | `current.json` | 전체 보유내역 · 요약 · 자산배분(자동 생성, 허브 등 외부 소비자용) |
 | `data/nav_history.json` | NAV 시계열(매 실행 보유구성 기준일부터 전체 재계산) |
 | `data/seed_*.json` · `data/stock_meta.json` | 폴백 seed · 종목코드↔종목명 매핑 |
+| `data/archive/holdings_*.json` | 연말 보유구성 원본 보존(불변) — 2개 이상부터 YoY 비교가 발행물에 실림 |
 | `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e) — 네트워크 호출 없음 |
-| `.github/workflows/` | `pages.yml` 일 1회 갱신·배포(+가격 캐시, 실패 시 이슈 생성) · `ci.yml` ruff+pytest |
+| `.github/workflows/` | `pages.yml` 일 1회 갱신·배포(+가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
 
 ## NAV 모델
 첫 스냅샷의 평가총액을 NAV 1000으로 고정한다(총좌수 = 첫 평가총액 / 1000). 이후 현금흐름 없이

@@ -87,6 +87,26 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 .stat-chip .stat-k{color:var(--text-secondary);}
 .stat-chip .stat-v{font-weight:700; font-size:13px;}
 
+/* 섹터 분석 (F-7) */
+.sector-row{display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px;}
+.sector-name{flex:0 0 150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.sector-name em{font-style:normal; color:var(--text-secondary); font-size:11px;}
+.sector-track{flex:1;}
+.sector-bar{display:block; height:100%; border-radius:4px; background:var(--primary);}
+.sector-w{flex:0 0 52px; text-align:right; font-variant-numeric:tabular-nums; font-weight:600;}
+.sector-chg{flex:0 0 64px; text-align:right; font-variant-numeric:tabular-nums;}
+.sector-contrib{flex:0 0 64px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-secondary);}
+.sector-rest{color:var(--text-secondary); justify-content:flex-start; padding-top:8px;}
+@media (max-width:560px){
+  .sector-name{flex-basis:96px;}
+  .sector-contrib{display:none;}
+}
+
+/* 연말 구성 변화 (F-6) */
+.yoy-row{justify-content:space-between;}
+.yoy-name{flex:1 1 auto;}
+.yoy-val{flex:0 0 auto; text-align:right; font-variant-numeric:tabular-nums;}
+
 /* 차트 라이브러리 로드 실패 안내 */
 .chart-error{
   display:flex; align-items:center; justify-content:center; height:100%; min-height:120px;

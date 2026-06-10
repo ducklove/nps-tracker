@@ -182,6 +182,67 @@
       sec.style.display='';
     }
 
+    /* ---------- 섹터 분석 (F-7) ----------
+       발행물 sectors(섹터별 비중·등락·기여도)를 가로 막대 목록으로 표시.
+       상위 12개 + 잔여 합산 한 줄. 데이터 없으면(업종 매핑 실패) 섹션 숨김 유지. */
+    function renderSectors(){
+      const sec=document.getElementById('sectorSection');
+      const box=document.getElementById('sectorBars');
+      if(!sec || !box) return;
+      const all=(DATA.sectors||[]).filter(s=>s && s.value>0);
+      if(!all.length) return;
+      const top=all.slice(0,12), rest=all.slice(12);
+      const maxW=Math.max.apply(null, top.map(s=>s.weightPct||0)) || 1;
+      const row=s=>'<div class="sector-row">'+
+        '<span class="sector-name" title="'+esc(s.name)+' · '+s.count+'종목">'+esc(s.name)+
+          ' <em>'+s.count+'</em></span>'+
+        '<span class="contrib-track sector-track"><span class="sector-bar" style="width:'+
+          Math.max(2,(s.weightPct||0)/maxW*100).toFixed(1)+'%"></span></span>'+
+        '<span class="sector-w">'+(s.weightPct!=null?s.weightPct.toFixed(1)+'%':'-')+'</span>'+
+        '<span class="sector-chg '+pctClass(s.changePct)+'">'+fmtPct(s.changePct)+'</span>'+
+        '<span class="sector-contrib" title="포트폴리오 일간 기여도">'+
+          (s.contribPct!=null?fmtPct(s.contribPct)+'p':'-')+'</span>'+
+      '</div>';
+      let html=top.map(row).join('');
+      if(rest.length){
+        const wSum=rest.reduce((a,s)=>a+(s.weightPct||0),0);
+        const cnt=rest.reduce((a,s)=>a+(s.count||0),0);
+        html+='<div class="sector-row sector-rest">그 외 '+rest.length+'개 섹터 · '+cnt+'종목 · 비중 '+wSum.toFixed(1)+'%</div>';
+      }
+      box.innerHTML=html;
+      const sub=document.getElementById('sectorSub');
+      if(sub) sub.textContent='KRX 업종분류 기준 · '+all.length+'개 섹터 · 평가액 가중';
+      sec.style.display='';
+    }
+
+    /* ---------- 연말 구성 변화 (F-6) ----------
+       발행물 yoy(최신 두 연말 아카이브 비교)를 3열로 표시. 아카이브가 2개 미만이면 숨김. */
+    function renderYoy(){
+      const sec=document.getElementById('yoySection');
+      if(!sec) return;
+      const y=DATA.yoy;
+      if(!y || !y.from || !y.to) return;
+      const none='<div class="contrib-none">없음</div>';
+      const li=(name,right,cls,tip)=>'<div class="contrib-row yoy-row" '+(tip?'title="'+esc(tip)+'"':'')+'>'+
+        '<span class="contrib-name yoy-name">'+esc(name)+'</span>'+
+        '<span class="yoy-val '+(cls||'')+'">'+right+'</span></div>';
+      const added=(y.added||[]).map(h=>li(h.stock_name||h.stock_code,
+        h.value!=null?fmtKrwJo(h.value):(h.shares||0).toLocaleString('ko-KR')+'주', '',
+        '지분율 '+(h.ownership_pct!=null?h.ownership_pct+'%':'-'))).join('');
+      const removed=(y.removed||[]).map(h=>li(h.stock_name||h.stock_code,
+        (h.ownership_pct!=null?'지분 '+h.ownership_pct+'%':(h.shares||0).toLocaleString('ko-KR')+'주'),'')).join('');
+      const changed=(y.topChanges||[]).map(h=>li(h.stock_name||h.stock_code,
+        fmtPct(h.change_pct), pctClass(h.change_pct),
+        (h.from_shares||0).toLocaleString('ko-KR')+'주 → '+(h.to_shares||0).toLocaleString('ko-KR')+'주')).join('');
+      document.getElementById('yoyAdded').innerHTML=added||none;
+      document.getElementById('yoyRemoved').innerHTML=removed||none;
+      document.getElementById('yoyChanged').innerHTML=changed||none;
+      const sub=document.getElementById('yoySub');
+      if(sub) sub.textContent=y.from+' → '+y.to+' 공시 기준 · 신규 '+(y.addedTotal||0)+
+        ' · 전량매도 '+(y.removedTotal||0)+' · 수량변경 '+(y.changedTotal||0)+'종목';
+      sec.style.display='';
+    }
+
     /* ---------- 테이블 (정렬 + 검색 F-3) ---------- */
     let _sortKey='mv', _sortAsc=false;
     let _allHoldings=null;
@@ -282,13 +343,37 @@
 
     function renderTreemap(){
       const el=document.getElementById('npsTreemap');
-      const data=(DATA.treemap||[]).slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,60).map(d=>({name:d.name, value:d.value, changePct:d.changePct, itemStyle:{color:treemapColor(d.changePct)}}));
-      if(!data.length) return;
+      const raw=(DATA.treemap||[]).slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,60);
+      if(!raw.length) return;
       const isDark=_isDark();
+      const leaf=d=>({name:d.name, value:d.value, changePct:d.changePct, itemStyle:{color:treemapColor(d.changePct)}});
+      // 업종 정보가 있으면 섹터 1단계 그룹(F-7), 없으면 기존 평면 트리맵(구버전 데이터 호환)
+      let data, levels;
+      if(raw.some(d=>d.sector)){
+        const groups={};
+        raw.forEach(d=>{const k=d.sector||'기타'; (groups[k]=groups[k]||[]).push(d);});
+        data=Object.keys(groups).map(k=>({name:k, children:groups[k].map(leaf)}));
+        levels=[
+          {itemStyle:{borderColor:'transparent', gapWidth:3}},
+          {upperLabel:{show:true, height:18, fontSize:10, fontWeight:600,
+             color:isDark?'#cbd5e1':'#475569'},
+           itemStyle:{color:isDark?'#1e293b':'#f1f5f9',
+             borderColor:isDark?'#334155':'#e5e7eb', borderWidth:1, gapWidth:1}},
+          {itemStyle:{borderColor:isDark?'#334155':'#e5e7eb', borderWidth:1}}
+        ];
+      }else{
+        data=raw.map(leaf);
+      }
       _newChart(el).setOption({
-        tooltip:{formatter(info){const d=info.data; return '<strong>'+esc(info.name)+'</strong><br/>평가: '+Number(info.value).toLocaleString()+'<br/>일간: '+fmtPct(d.changePct);}},
+        tooltip:{formatter(info){
+          const d=info.data||{};
+          let s='<strong>'+esc(info.name)+'</strong><br/>평가: '+Number(info.value).toLocaleString();
+          if(d.changePct!=null) s+='<br/>일간: '+fmtPct(d.changePct);
+          return s;
+        }},
         series:[{type:'treemap', left:0,right:0,top:0,bottom:0, roam:false, nodeClick:false, breadcrumb:{show:false},
           itemStyle:{borderColor:isDark?'#334155':'#e5e7eb', borderWidth:1},
+          levels:levels,
           label:{show:true, formatter(p){const cp=p.data.changePct; const s=cp!=null?(cp>0?'+':'')+cp.toFixed(2)+'%':''; return '{name|'+p.name+'}\n{pct|'+s+'}';},
             rich:{name:{fontSize:11,fontWeight:600,color:'#fff',lineHeight:16}, pct:{fontSize:10,color:'rgba(255,255,255,0.85)',lineHeight:14}}},
           data:data}]
@@ -567,6 +652,8 @@
     renderCompBadge();
     renderWarnings();
     renderContrib();
+    renderSectors();
+    renderYoy();
     renderTable();
     _echartsReady.then(renderCharts, showChartError);
     window.addEventListener('resize',()=>_charts.forEach(c=>c.resize()));
