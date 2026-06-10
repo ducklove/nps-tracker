@@ -21,7 +21,7 @@ from .sources.dart import fetch_dart_nps_shares
 from .sources.datago import get_public_holdings
 from .sources.fnguide import fetch_fnguide_shares
 from .sources.market import _close_on_before, get_kospi_cached, get_prices_cached
-from .sources.sector import aggregate_sectors, load_sector_map
+from .sources.sector import aggregate_sectors, load_sector_map, sector_for
 from .validate import run_validation
 
 logger = logging.getLogger("nps")
@@ -146,10 +146,10 @@ def main(argv=None):
     # 기금 전체·부문별 평가액(시트 공표 + KOSIS + 추정). 추정월 국내주식엔 본 사이트 일별 평가액 사용.
     fund_portfolio = get_fund_portfolio(nav_hist)
 
-    # 섹터 분석(F-7): KRX 업종분류를 평가 종목에 부착해 섹터별 비중·등락·기여도 집계.
+    # 섹터 분석(F-7): 업종분류(KRX 또는 KIND)를 평가 종목에 부착해 섹터별 비중·등락·기여도 집계.
     sector_map = load_sector_map(snap_date)
     for h in valid:
-        sec = sector_map.get(h["stock_code"])
+        sec = sector_for(h["stock_code"], sector_map)  # 우선주는 보통주 업종으로 폴백
         if sec:
             h["sector"] = sec
     sectors = aggregate_sectors(valid)

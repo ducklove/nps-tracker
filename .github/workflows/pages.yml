@@ -75,6 +75,9 @@ jobs:
           KOSIS_API_KEY: ${{ secrets.KOSIS_API_KEY || vars.KOSIS_API_KEY }}
           # DART 대량보유 공시(5%↑ 수량을 공시 당일 반영). 없으면 FnGuide/연말 수량 유지.
           DART_API_KEY: ${{ secrets.DART_API_KEY || vars.DART_API_KEY }}
+          # KRX 데이터포털 계정(선택) — 있으면 섹터를 KRX 표준 업종분류로, 없으면 KIND 산업분류로.
+          KRX_ID: ${{ secrets.KRX_ID || vars.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW || vars.KRX_PW }}
         run: python fetch_data.py
 
       - name: Commit refreshed data

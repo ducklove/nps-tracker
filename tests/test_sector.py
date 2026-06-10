@@ -47,6 +47,37 @@ def test_no_cache_no_fetch_returns_empty(tmp_repo, monkeypatch):
     assert sector.load_sector_map("2026-06-10") == {}
 
 
+def test_kind_fallback_when_krx_empty(tmp_repo, monkeypatch):
+    """KRX 업종분류가 비면(로그인 미설정) KIND 산업분류로 폴백한다."""
+    monkeypatch.setattr(sector, "_fetch_krx_sector_map", lambda d: {})
+    monkeypatch.setattr(sector, "_fetch_kind_sector_map", lambda: {"005930": "통신 및 방송 장비 제조업"})
+    assert sector._fetch_sector_map("2026-06-10") == {"005930": "통신 및 방송 장비 제조업"}
+    # KRX가 성공하면 KIND를 호출하지 않는다
+    monkeypatch.setattr(sector, "_fetch_krx_sector_map", lambda d: {"005930": "전기전자"})
+    monkeypatch.setattr(sector, "_fetch_kind_sector_map",
+                        lambda: (_ for _ in ()).throw(AssertionError("KIND 호출 금지")))
+    assert sector._fetch_sector_map("2026-06-10") == {"005930": "전기전자"}
+
+
+def test_parse_kind_corplist():
+    html = """
+    <table><thead><tr><th>회사명</th><th>종목코드</th><th>업종</th><th>주요제품</th></tr></thead>
+    <tbody>
+    <tr><td><a href="#">삼성전자</a></td><td>005930</td><td>통신 및 방송 장비 제조업</td><td>스마트폰</td></tr>
+    <tr><td>비상장</td><td>ABCDEF</td><td>업종</td><td>-</td></tr>
+    <tr><td>빈업종</td><td>123456</td><td></td><td>-</td></tr>
+    </tbody></table>
+    """
+    assert sector._parse_kind_corplist(html) == {"005930": "통신 및 방송 장비 제조업"}
+
+
+def test_sector_for_preferred_fallback():
+    smap = {"005930": "전기전자"}
+    assert sector.sector_for("005930", smap) == "전기전자"
+    assert sector.sector_for("005935", smap) == "전기전자"  # 삼성전자우 → 보통주 업종
+    assert sector.sector_for("000660", smap) is None
+
+
 def _ev(code, sector_name, mv, chg):
     h = {"stock_code": code, "stock_name": code, "market_value": mv, "change_pct": chg}
     if sector_name:
