@@ -54,13 +54,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 가격 증분 캐시(data/price_cache.json)는 git에 커밋하지 않고 actions/cache로 영속한다.
+      # 증분 캐시(가격·DART corpCode 매핑)는 git에 커밋하지 않고 actions/cache로 영속한다.
       # key가 run마다 달라 항상 miss → restore-keys로 직전 캐시 복원 → job 종료 시 새 key로 저장.
       - name: Restore price cache
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         uses: actions/cache@v4
         with:
-          path: data/price_cache.json
+          path: |
+            data/price_cache.json
+            data/dart_corp_codes.json
           key: price-cache-${{ github.run_id }}
           restore-keys: |
             price-cache-
@@ -68,8 +70,10 @@ jobs:
       - name: Refresh NPS data
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
         env:
-          # secret 또는 variable 어디에 등록했든 동작(미등록 시 빈 값 → KOSIS 생략하고 seed 사용)
+          # secret 또는 variable 어디에 등록했든 동작(미등록 시 빈 값 → 해당 소스만 생략)
           KOSIS_API_KEY: ${{ secrets.KOSIS_API_KEY || vars.KOSIS_API_KEY }}
+          # DART 대량보유 공시(5%↑ 수량을 공시 당일 반영). 없으면 FnGuide/연말 수량 유지.
+          DART_API_KEY: ${{ secrets.DART_API_KEY || vars.DART_API_KEY }}
         run: python fetch_data.py
 
       - name: Commit refreshed data

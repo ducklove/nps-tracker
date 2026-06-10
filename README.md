@@ -10,10 +10,14 @@
   discover로 최신 연말판을 받아 종목코드를 매핑하고, 보유 주식수가 없으므로 연말 종가로 추정수량을
   환산한다. 받지 못하면 seed(`data/seed_holdings_latest.json`)로 폴백한다.
   (FnGuide는 지분율 5% 이상 대량보유만 제공해 5% 미만 보유주가 누락되므로 쓰지 않는다.)
+- **5%↑ 공시 수량**: DART OpenAPI 「대량보유 상황보고」(`DART_API_KEY` 필요) > FnGuide 폴백.
+  공시 당일 최신 보유주식수가 연말 추정수량 위에 덮인다. 키가 없으면 해당 소스만 생략.
 - **종목코드 매핑**: `data/corp_codes.json`(DART 상장사 전체) + 내장 별칭, 정확/정규화/prefix 매칭.
 - **종가**: KRX(pykrx, 원주가) · 폴백 yfinance(`.KS`/`.KQ`), 증분 캐시(`data/price_cache.json`, 미커밋)
 - **KOSPI**: yfinance(`^KS11`)
 - **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > data.go.kr > KOSIS > seed + 최근월 추정
+- API 키는 환경변수로만 받는다: `DART_API_KEY`(대량보유 공시), `KOSIS_API_KEY`(기금 월별).
+  GitHub Actions에서는 저장소 secrets 또는 variables에 등록하면 된다.
 
 ## 구조
 | 파일 | 설명 |

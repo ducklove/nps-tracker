@@ -48,6 +48,17 @@ KOSIS_FUND_URL = (
 GOOGLE_SHEET_ID = "1FtupuMVam7otVoerKS0r6fUNDWNhzM7GQVQPZUdPZtc"
 GOOGLE_SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
 
+# DART OpenAPI 「대량보유 상황보고」 — 국민연금 5%↑ 지분 공시를 공시 당일 반영(FnGuide 보강·우선).
+# 인증키는 환경변수 DART_API_KEY로만 받는다(없으면 조용히 생략 — KOSIS_API_KEY와 같은 패턴).
+DART_CORPCODE_URL = "https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key={key}"
+DART_MAJORSTOCK_URL = "https://opendart.fss.or.kr/api/majorstock.json?crtfc_key={key}&corp_code={corp_code}"
+# 종목코드(6자리) → DART 고유번호(8자리) 매핑 캐시 — 미커밋, Actions에서는 actions/cache로 영속.
+DART_CORP_CACHE = os.path.join(DATA, "dart_corp_codes.json")
+DART_CORP_CACHE_MAX_AGE_DAYS = 30
+# 대량보유 보고 대상은 5%↑뿐이므로 연말 지분율 기준 후보를 한정(경계 종목 여유분 포함 ≈290종목).
+DART_CANDIDATE_MIN_OWNERSHIP_PCT = 4.5
+DART_NPS_REPORTER_SUBSTR = "국민연금"  # 보고자(repror) 매칭 부분문자열
+
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
 _PUBLIC_CSV_URL_RE = re.compile(r'"contentUrl"\s*:\s*"([^"]+fileDownload\.do[^"]+)"')

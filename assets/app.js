@@ -311,6 +311,38 @@
       return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     }
 
+    /* ---------- 구간 성과 지표 (F-8): 선택 구간의 수익률·KOSPI 대비·변동성·MDD ---------- */
+    function _stdev(a){
+      if(a.length<2) return null;
+      const m=a.reduce((x,y)=>x+y,0)/a.length;
+      return Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/(a.length-1));
+    }
+    function renderNavStats(nav, kRaw){
+      const el=document.getElementById('navStats');
+      if(!el) return;
+      if(!nav || nav.length<2){ el.style.display='none'; return; }
+      const ret=(nav[nav.length-1].nav/nav[0].nav-1)*100;
+      const kVals=(kRaw||[]).filter(v=>v!=null&&v>0);
+      const kRet=kVals.length>1 ? (kVals[kVals.length-1]/kVals[0]-1)*100 : null;
+      const daily=[];
+      for(let i=1;i<nav.length;i++){ const p=nav[i-1].nav; if(p>0) daily.push(nav[i].nav/p-1); }
+      const sd=_stdev(daily);
+      const vol=sd!=null ? sd*Math.sqrt(252)*100 : null;   // 일간 수익률 표준편차의 연환산
+      let peak=-Infinity, mdd=0;
+      nav.forEach(d=>{ if(d.nav>peak) peak=d.nav; const dd=d.nav/peak-1; if(dd<mdd) mdd=dd; });
+      const chips=[
+        {k:'구간 수익률', v:fmtPct(ret), cls:pctClass(ret)},
+        {k:'KOSPI', v:fmtPct(kRet), cls:pctClass(kRet)},
+        {k:'초과수익', v:kRet!=null?fmtPct(ret-kRet)+'p':'-', cls:kRet!=null?pctClass(ret-kRet):'nps-neutral'},
+        {k:'변동성(연환산)', v:vol!=null?vol.toFixed(1)+'%':'-', cls:''},
+        {k:'MDD', v:(mdd*100).toFixed(1)+'%', cls:mdd<0?'nps-down':'nps-neutral'},
+      ];
+      el.innerHTML=chips.map(c=>
+        '<span class="stat-chip"><span class="stat-k">'+c.k+'</span>'+
+        '<span class="stat-v '+c.cls+'">'+c.v+'</span></span>').join('');
+      el.style.display='';
+    }
+
     function renderNavWithKospi(){
       const el=document.getElementById('npsNavChart');
       const navAll=DATA.navHistory||[];
@@ -336,6 +368,7 @@
       const kRaw=nav.map(d=>kospiByDate[d.date]!=null?kospiByDate[d.date]:null);
       let kNorm=[]; const kBase=kRaw.find(v=>v!=null&&v>0);
       if(kBase) kNorm=kRaw.map(v=>v!=null?+(v/kBase*1000).toFixed(2):null);
+      renderNavStats(nav, kRaw);   // 구간 성과 지표(F-8) — 기간 선택과 함께 갱신
       const series=[{name:'국민연금', type:'line', data:navValues, symbol:'none', smooth:false,
         lineStyle:{color:navColor,width:2}, itemStyle:{color:navColor},
         areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:navColor+'33'},{offset:1,color:navColor+'00'}]}}}];

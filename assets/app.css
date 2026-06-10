@@ -81,6 +81,12 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 .pf-range button:hover{color:var(--text);}
 .pf-range button.active{color:var(--primary); border-color:var(--primary); font-weight:600;}
 
+/* NAV 구간 성과 지표 (F-8) */
+.pf-nav-stats{display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:10px;}
+.stat-chip{display:inline-flex; align-items:baseline; gap:6px; font-size:12px;}
+.stat-chip .stat-k{color:var(--text-secondary);}
+.stat-chip .stat-v{font-weight:700; font-size:13px;}
+
 /* 차트 라이브러리 로드 실패 안내 */
 .chart-error{
   display:flex; align-items:center; justify-content:center; height:100%; min-height:120px;
