@@ -5,79 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>국민연금 국내주식 포트폴리오</title>
 <meta name="description" content="국민연금공단(NPS) 국내주식 보유 포트폴리오를 일별 종가로 재평가한 NAV 추이와 KOSPI 비교 대시보드">
-<style>
-:root{
-  --bg:#f5f5f5; --surface:#ffffff; --surface-muted:rgba(148,163,184,.10);
-  --text:#1a1a1a; --text-secondary:#666; --border:#e0e0e0; --primary:#2563eb;
-}
-[data-theme="dark"]{
-  --bg:#0f172a; --surface:#1e293b; --surface-muted:rgba(148,163,184,.12);
-  --text:#e2e8f0; --text-secondary:#94a3b8; --border:#334155; --primary:#3b82f6;
-}
-*{box-sizing:border-box;}
-body{
-  margin:0; background:var(--bg); color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-  font-size:14px; line-height:1.5;
-}
-.container{max-width:1080px; margin:0 auto; padding:24px 16px 64px;}
-header h1{font-size:22px; margin:0 0 6px;}
-.meta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:var(--text-secondary); font-size:12px;}
-.meta .spacer{flex:1;}
-#themeToggle{
-  background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
-  border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px;
-}
-#themeToggle:hover{color:var(--text);}
-.source-note{
-  margin:14px 0 22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
-  background:var(--surface-muted); color:var(--text-secondary); font-size:12px; line-height:1.55;
-}
-.source-note a{color:var(--primary); text-decoration:none;}
-
-/* 요약 카드 */
-.pf-summary{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:22px;}
-.pf-summary-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px;}
-.pf-summary-label{font-size:12px; color:var(--text-secondary); margin-bottom:6px;}
-.pf-summary-value{font-size:22px; font-weight:700;}
-.pf-summary-sub{font-size:12px; color:var(--text-secondary); margin-top:4px;}
-
-/* 섹션 / 차트 */
-.pf-nav-chart-wrap{margin-bottom:26px;}
-.pf-nav-header{margin-bottom:10px;}
-.pf-nav-header h3{font-size:16px; margin:0;}
-.pf-sub{font-size:12px; color:var(--text-secondary); margin-top:3px;}
-.pf-nav-chart-container{height:340px;}
-#npsTreemap{height:560px; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
-#npsNavChart,#npsValueChart,#npsFundTotalChart,#npsFundCompChart,#npsFundPieChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
-
-/* 테이블 */
-.pf-table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
-.pf-table{width:100%; border-collapse:collapse; font-size:13px; background:var(--surface);}
-.pf-table thead th{
-  position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--border);
-  padding:10px 12px; text-align:right; font-weight:600; color:var(--text-secondary); white-space:nowrap;
-}
-.pf-table th.pf-col-name{text-align:left;}
-.pf-table td{padding:9px 12px; text-align:right; white-space:nowrap;}
-.pf-table tbody tr:nth-child(even){background:var(--surface-muted);}
-.pf-table td.pf-col-name{text-align:left;}
-.pf-table td.pf-col-num{text-align:right; color:var(--text-secondary); width:1%;}
-.pf-sortable{cursor:pointer; user-select:none;}
-.pf-sortable:hover{color:var(--text);}
-
-.nps-up{color:#dc2626;} .nps-down{color:#2563eb;} .nps-neutral{color:var(--text-secondary);}
-[data-theme="dark"] .nps-up{color:#fca5a5;} [data-theme="dark"] .nps-down{color:#93c5fd;}
-
-.empty{padding:48px 16px; text-align:center; color:var(--text-secondary);}
-
-/* iframe 임베드(?embed=true): 헤더·출처노트 숨기고 여백 축소 */
-body.embed header, body.embed .source-note{display:none;}
-body.embed .container{padding-top:16px; max-width:none;}
-.load-all-wrap{text-align:center; margin-top:14px;}
-#loadAllBtn{background:var(--surface); color:var(--primary); border:1px solid var(--border); border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px;}
-#loadAllBtn:hover{border-color:var(--primary);}
-</style>
+<link rel="stylesheet" href="assets/app.css?v=2">
+<!-- 데이터는 app.js가 data.json(fetch) → data.js(script) 순으로 캐시버스팅 로드해
+     iframe 임베드에서도 항상 최신을 보장한다. ECharts는 SRI 적용해 CDN에서 동적 로드. -->
+<script src="assets/app.js?v=2" defer></script>
 </head>
 <body>
 <div class="container">
@@ -85,6 +16,7 @@ body.embed .container{padding-top:16px; max-width:none;}
     <h1>국민연금 국내주식 포트폴리오</h1>
     <div class="meta">
       <span id="metaAsOf"></span>
+      <span id="compBadge" class="comp-badge" style="display:none;"></span>
       <span class="spacer"></span>
       <button id="themeToggle" type="button">다크 모드</button>
     </div>
@@ -95,7 +27,20 @@ body.embed .container{padding-top:16px; max-width:none;}
     </div>
   </header>
 
+  <div id="warnings" class="warn-banner" style="display:none;"></div>
+
   <div id="summary" class="pf-summary"></div>
+
+  <section class="pf-nav-chart-wrap" id="contribSection" style="display:none;">
+    <div class="pf-nav-header">
+      <h3>오늘의 기여도</h3>
+      <div class="pf-sub" id="contribSub"></div>
+    </div>
+    <div class="contrib-grid">
+      <div class="contrib-col"><div class="contrib-col-title">상승 Top 5</div><div id="contribUp"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">하락 Top 5</div><div id="contribDown"></div></div>
+    </div>
+  </section>
 
   <section class="pf-nav-chart-wrap">
     <div class="pf-nav-header"><h3>포트폴리오 구성 (평가액 상위 60)</h3></div>
@@ -103,7 +48,16 @@ body.embed .container{padding-top:16px; max-width:none;}
   </section>
 
   <section class="pf-nav-chart-wrap">
-    <div class="pf-nav-header"><h3>NAV 추이 (vs KOSPI)</h3></div>
+    <div class="pf-nav-header pf-flex-header">
+      <h3>NAV 추이 (vs KOSPI)</h3>
+      <div class="pf-range" id="navRange" role="group" aria-label="기간 선택">
+        <button type="button" data-range="1m">1M</button>
+        <button type="button" data-range="3m">3M</button>
+        <button type="button" data-range="6m">6M</button>
+        <button type="button" data-range="ytd">YTD</button>
+        <button type="button" data-range="all" class="active">전체</button>
+      </div>
+    </div>
     <div class="pf-nav-chart-container"><div id="npsNavChart"></div></div>
   </section>
 
@@ -129,7 +83,13 @@ body.embed .container{padding-top:16px; max-width:none;}
   </section>
 
   <section class="pf-nav-chart-wrap">
-    <div class="pf-nav-header"><h3>보유 종목</h3></div>
+    <div class="pf-nav-header pf-flex-header">
+      <h3>보유 종목</h3>
+      <div class="pf-table-tools">
+        <span id="searchCount" class="pf-search-count"></span>
+        <input id="tableSearch" type="search" placeholder="종목명·코드 검색" autocomplete="off" aria-label="보유 종목 검색">
+      </div>
+    </div>
     <div class="pf-table-wrap">
       <table class="pf-table" id="npsTable">
         <thead><tr>
@@ -148,338 +108,5 @@ body.embed .container{padding-top:16px; max-width:none;}
     <div class="load-all-wrap" style="display:none;"><button id="loadAllBtn" type="button"></button></div>
   </section>
 </div>
-
-<!-- data.js를 매 로드 고유 nonce로 받아 iframe 임베드에서도 항상 최신 데이터가 -->
-<!-- 반영되게 한다(GitHub Pages 캐시 우회). document.write 는 초기 파싱 중이라 -->
-<!-- 동기 로드되어 아래 인라인 스크립트보다 먼저 window.NPS_DATA 를 채운다. -->
-<script>document.write('<script src="data.js?t=' + Date.now() + '"><\/script>');</script>
-<script>
-(function(){
-  const DATA = window.NPS_DATA;
-  if(!DATA){
-    document.querySelector('.container').insertAdjacentHTML('beforeend',
-      '<div class="empty">데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>');
-    return;
-  }
-
-  /* ---------- 포매터 ---------- */
-  function fmtKrwJo(v){
-    const av=Math.abs(v);
-    if(av>=1e12){ const x=v/1e12; const d=av>=1e15?0:av>=1e14?1:av>=1e13?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'조'; }
-    if(av>=1e8){ const x=v/1e8; const d=av>=1e11?0:av>=1e10?1:av>=1e9?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'억'; }
-    return Math.round(v).toLocaleString('ko-KR')+'원';
-  }
-  function fmtPct(v){ if(v==null) return '-'; return (v>0?'+':'')+v.toFixed(2)+'%'; }
-  function pctClass(v){ if(v==null||v===0) return 'nps-neutral'; return v>0?'nps-up':'nps-down'; }
-
-  /* 등락률 → 색 (snapshot_nps의 returnToColor 이식) */
-  function returnToColor(pct, range){
-    range=range||20;
-    if(pct==null) return '#9ca3af';
-    let t=Math.max(-1,Math.min(1,pct/range)); const a=Math.abs(t);
-    const gray=[156,163,175], blue=[37,99,235], red=[220,38,38];
-    const tgt=t<0?blue:red;
-    const r=Math.round(gray[0]+(tgt[0]-gray[0])*a), g=Math.round(gray[1]+(tgt[1]-gray[1])*a), b=Math.round(gray[2]+(tgt[2]-gray[2])*a);
-    return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
-  }
-  /* 트리맵 색 (blue→gray→red, ±5% clamp) */
-  function treemapColor(pct){
-    if(pct==null) return _isDark()?'#475569':'#9ca3af';
-    const c=Math.max(-5,Math.min(5,pct)); const t=(c+5)/10;
-    let r,g,b;
-    if(t<0.5){ const s=t/0.5; r=Math.round(37+(148-37)*s); g=Math.round(99+(163-99)*s); b=Math.round(235+(184-235)*s); }
-    else{ const s=(t-0.5)/0.5; r=Math.round(148+(220-148)*s); g=Math.round(163+(38-163)*s); b=Math.round(184+(38-184)*s); }
-    return 'rgb('+r+','+g+','+b+')';
-  }
-
-  /* ---------- 테마 ---------- */
-  function _isDark(){ return document.documentElement.getAttribute('data-theme')==='dark'; }
-  function _textColor(){ return getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim()||'#888'; }
-  function _gridColor(){ return getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#ccc'; }
-
-  /* ---------- 요약 카드 ---------- */
-  function renderSummary(){
-    const s=DATA.summary||{};
-    document.getElementById('metaAsOf').textContent =
-      '기준일 '+(s.asOf||DATA.asOf||'-')+' · 갱신 '+(DATA.lastUpdated||'-')+' · '+(s.count||0)+'종목';
-    const cards=[
-      {label:'국내주식 평가금액', value:fmtKrwJo(s.totalValue||0), sub:'NAV '+(s.nav!=null?s.nav.toFixed(2):'-'), cls:''},
-      {label:(s.asOf||DATA.asOf||'기준일'), value:fmtPct(s.todayPct), sub:'일간 등락률(가중평균)', cls:pctClass(s.todayPct)},
-      {label:'MTD', value:fmtPct(s.mtdPct), sub:'전월말 대비', cls:pctClass(s.mtdPct)},
-      {label:'YTD', value:fmtPct(s.ytdPct), sub:'연초 대비', cls:pctClass(s.ytdPct)},
-    ];
-    document.getElementById('summary').innerHTML = cards.map(c=>
-      '<div class="pf-summary-card"><div class="pf-summary-label">'+c.label+'</div>'+
-      '<div class="pf-summary-value '+c.cls+'">'+c.value+'</div>'+
-      '<div class="pf-summary-sub">'+c.sub+'</div></div>'
-    ).join('');
-  }
-
-  /* ---------- 테이블 ---------- */
-  let _sortKey='mv', _sortAsc=false;
-  let _allHoldings=null;
-  function _holdings(){ return _allHoldings || DATA.holdings || []; }
-  function renderTable(){
-    const tbody=document.querySelector('#npsTable tbody');
-    const rows=_holdings().slice();
-    rows.sort((a,b)=>{
-      if(_sortKey==='name') return _sortAsc? (a.stock_name||'').localeCompare(b.stock_name||'','ko') : (b.stock_name||'').localeCompare(a.stock_name||'','ko');
-      const m={change:'change_pct',mv:'market_value',own:'ownership_pct'}[_sortKey];
-      const va=a[m]||0, vb=b[m]||0; return _sortAsc? va-vb : vb-va;
-    });
-    tbody.innerHTML = rows.map((h,i)=>{
-      const cp=h.change_pct;
-      return '<tr>'+
-        '<td class="pf-col-num">'+(i+1)+'</td>'+
-        '<td class="pf-col-name">'+h.stock_name+'</td>'+
-        '<td class="'+pctClass(cp)+'">'+fmtPct(cp)+'</td>'+
-        '<td>'+(h.price?Math.round(h.price).toLocaleString('ko-KR'):'-')+'</td>'+
-        '<td>'+(h.shares?h.shares.toLocaleString('ko-KR'):'-')+'</td>'+
-        '<td>'+(h.market_value?Math.round(h.market_value).toLocaleString('ko-KR'):'-')+'</td>'+
-        '<td>'+(h.weight!=null?h.weight.toFixed(1)+'%':'-')+'</td>'+
-        '<td>'+(h.ownership_pct!=null?h.ownership_pct.toFixed(2)+'%':'-')+'</td>'+
-      '</tr>';
-    }).join('');
-    document.querySelectorAll('#npsTable th.pf-sortable').forEach(th=>{
-      const base=th.textContent.replace(/[▲▼]/g,'').trim();
-      th.textContent = th.dataset.sort===_sortKey ? base+(_sortAsc?' ▲':' ▼') : base;
-    });
-    const wrap=document.querySelector('.load-all-wrap');
-    const total=DATA.holdingsTotal || _holdings().length;
-    if(wrap){
-      if(!_allHoldings && total > _holdings().length){
-        document.getElementById('loadAllBtn').textContent='전체 '+total+'종목 보기 (현재 상위 '+_holdings().length+')';
-        wrap.style.display='';
-      } else { wrap.style.display='none'; }
-    }
-  }
-  document.querySelectorAll('#npsTable th.pf-sortable').forEach(th=>{
-    th.addEventListener('click',()=>{
-      const k=th.dataset.sort;
-      if(_sortKey===k) _sortAsc=!_sortAsc; else { _sortKey=k; _sortAsc=(k==='name'); }
-      renderTable();
-    });
-  });
-  document.getElementById('loadAllBtn').addEventListener('click', async function(){
-    this.textContent='불러오는 중…'; this.disabled=true;
-    try{
-      const r=await fetch('current.json',{cache:'no-cache'});
-      const j=await r.json();
-      _allHoldings=j.holdings||[];
-      renderTable();
-    }catch(e){ this.textContent='불러오기 실패 — 다시 시도'; this.disabled=false; }
-  });
-
-  /* ---------- 차트 ---------- */
-  let _charts=[];
-  function _newChart(el){ const c=echarts.init(el); _charts.push(c); return c; }
-
-  function renderTreemap(){
-    const el=document.getElementById('npsTreemap');
-    const data=(DATA.treemap||[]).slice().sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,60).map(d=>({name:d.name, value:d.value, changePct:d.changePct, itemStyle:{color:treemapColor(d.changePct)}}));
-    if(!data.length) return;
-    const isDark=_isDark();
-    _newChart(el).setOption({
-      tooltip:{formatter(info){const d=info.data; return '<strong>'+info.name+'</strong><br/>평가: '+Number(info.value).toLocaleString()+'<br/>일간: '+fmtPct(d.changePct);}},
-      series:[{type:'treemap', left:0,right:0,top:0,bottom:0, roam:false, nodeClick:false, breadcrumb:{show:false},
-        itemStyle:{borderColor:isDark?'#334155':'#e5e7eb', borderWidth:1},
-        label:{show:true, formatter(p){const cp=p.data.changePct; const s=cp!=null?(cp>0?'+':'')+cp.toFixed(2)+'%':''; return '{name|'+p.name+'}\n{pct|'+s+'}';},
-          rich:{name:{fontSize:11,fontWeight:600,color:'#fff',lineHeight:16}, pct:{fontSize:10,color:'rgba(255,255,255,0.85)',lineHeight:14}}},
-        data:data}]
-    });
-  }
-
-  function renderNavWithKospi(){
-    const el=document.getElementById('npsNavChart');
-    const nav=DATA.navHistory||[];
-    if(!nav.length) return;
-    const labels=nav.map(d=>d.date.slice(5));
-    const navValues=nav.map(d=>d.nav);
-    let navColor='#9ca3af';
-    if(nav.length>1){ const w=nav.slice(-365); if(w.length>1){ navColor=returnToColor((nav[nav.length-1].nav/w[0].nav-1)*100); } }
-    const kospiByDate=Object.fromEntries((DATA.kospiHistory||[]).map(d=>[d.date,d.value]));
-    const kRaw=nav.map(d=>kospiByDate[d.date]!=null?kospiByDate[d.date]:null);
-    let kNorm=[]; const kBase=kRaw.find(v=>v!=null&&v>0);
-    if(kBase) kNorm=kRaw.map(v=>v!=null?+(v/kBase*1000).toFixed(2):null);
-    const series=[{name:'국민연금', type:'line', data:navValues, symbol:'none', smooth:false,
-      lineStyle:{color:navColor,width:2}, itemStyle:{color:navColor},
-      areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:navColor+'33'},{offset:1,color:navColor+'00'}]}}}];
-    if(kNorm.length){ series.push({name:'KOSPI', type:'line', data:kNorm, symbol:'none', smooth:false, lineStyle:{color:'#94a3b8',width:1.5,type:'dashed'}, itemStyle:{color:'#94a3b8'}}); }
-    const tc=_textColor(), gc=_gridColor();
-    _newChart(el).setOption({
-      grid:{left:60,right:14,top:28,bottom:26},
-      legend:{show:kNorm.length>0, top:0, right:0, textStyle:{color:tc,fontSize:11}},
-      xAxis:{type:'category', data:labels, axisLine:{lineStyle:{color:gc}}, axisLabel:{color:tc,fontSize:10}, splitLine:{show:false}},
-      yAxis:{type:'value', scale:true, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10}, splitLine:{lineStyle:{color:gc,width:0.5}}},
-      tooltip:{trigger:'axis', formatter(ps){let s=ps[0].axisValue; ps.forEach(p=>{const pct=((p.value/1000-1)*100).toFixed(2); s+='<br/>'+p.marker+' '+p.seriesName+': '+p.value.toLocaleString()+' ('+(pct>0?'+':'')+pct+'%)';}); return s;}},
-      series:series
-    });
-  }
-
-  /* ---------- 기금 전체·부문별(공식 스냅샷) ---------- */
-  const FUND_SECTORS=[
-    {key:'domestic_stock', name:'국내주식', color:'#2563eb'},
-    {key:'foreign_stock',  name:'해외주식', color:'#16a34a'},
-    {key:'domestic_bond',  name:'국내채권', color:'#f59e0b'},
-    {key:'foreign_bond',   name:'해외채권', color:'#fbbf24'},
-    {key:'alternative',    name:'대체투자', color:'#a855f7'},
-    {key:'short_term',     name:'단기자금', color:'#06b6d4'},
-  ];
-  // 추정 구간(estimatedFrom~끝) 음영 markArea
-  function _fundEstMark(periods){
-    const ef=(DATA.fundPortfolio||{}).estimatedFrom;
-    if(!ef) return undefined;
-    const i=periods.indexOf(ef); if(i<0) return undefined;
-    return {silent:true, itemStyle:{color:_isDark()?'rgba(250,204,21,0.13)':'rgba(245,158,11,0.10)'},
-      label:{show:true, position:'insideTop', color:_textColor(), fontSize:10, formatter:'추정'},
-      data:[[{xAxis:periods[i]},{xAxis:periods[periods.length-1]}]]};
-  }
-  function fundPeriodLabel(p){ const a=String(p).split('-'); return a[1]&&a[1]!=='01'? a[0]+'.'+(+a[1]) : a[0]; }
-  function _fundSeries(){ const fp=DATA.fundPortfolio; return fp&&fp.series&&fp.series.length? fp.series : null; }
-  // 월별 X축 라벨: 매년 1월과 마지막 포인트만 표시(연도 또는 연.월)
-  function _fundAxisLabel(periods){
-    const N=periods.length;
-    return {color:_textColor(), fontSize:10,
-      interval:(idx,val)=> String(val).slice(5)==='01' || idx===N-1,
-      formatter:v=>fundPeriodLabel(v)};
-  }
-
-  function renderFundTotalChart(){
-    const el=document.getElementById('npsFundTotalChart'), sec=document.getElementById('fundTotalSection');
-    const series=_fundSeries();
-    if(!series){ if(sec)sec.style.display='none'; return; }
-    if(sec)sec.style.display='';
-    const periods=series.map(s=>s.period);
-    const totals=series.map(s=>s.total||0);
-    const tc=_textColor(), gc=_gridColor();
-    const primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()||'#2563eb';
-    _newChart(el).setOption({
-      grid:{left:62,right:16,top:16,bottom:26},
-      xAxis:{type:'category', boundaryGap:false, data:periods, axisLine:{lineStyle:{color:gc}}, axisTick:{show:false}, axisLabel:_fundAxisLabel(periods)},
-      yAxis:{type:'value', min:0, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
-      tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return fundPeriodLabel(p.axisValue)+'<br/>기금 전체 '+fmtKrwJo(p.value);}},
-      series:[{type:'line', data:totals, symbol:'none', smooth:false, lineStyle:{color:primary,width:2}, itemStyle:{color:primary},
-        markArea:_fundEstMark(periods),
-        areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:primary+'40'},{offset:1,color:primary+'00'}]}}}]
-    });
-  }
-
-  function renderFundCompChart(){
-    const el=document.getElementById('npsFundCompChart'), sec=document.getElementById('fundCompSection');
-    const series=_fundSeries();  // 전체(공표 + 추정), 추정 구간은 음영으로 구분
-    if(!series){ if(sec)sec.style.display='none'; return; }
-    if(sec)sec.style.display='';
-    const periods=series.map(s=>s.period);
-    const amt=series.map(s=>FUND_SECTORS.map(se=> s[se.key]||0));
-    const pct=series.map((s,i)=>{ const t=s.total || amt[i].reduce((a,b)=>a+b,0); return amt[i].map(v=> t? +(v/t*100).toFixed(2):0); });
-    const tc=_textColor(), gc=_gridColor();
-    const echSeries=FUND_SECTORS.map((se,j)=>({
-      name:se.name, type:'line', stack:'pct', smooth:false, symbol:'none',
-      lineStyle:{width:0}, areaStyle:{opacity:0.88}, emphasis:{focus:'series'},
-      itemStyle:{color:se.color},
-      data:pct.map(row=>row[j]),
-    }));
-    if(echSeries[0]) echSeries[0].markArea=_fundEstMark(periods);  // 추정 구간 음영
-    _newChart(el).setOption({
-      grid:{left:44,right:16,top:36,bottom:26},
-      legend:{top:2, textStyle:{color:tc,fontSize:11}, itemWidth:12, itemHeight:8, itemGap:10},
-      xAxis:{type:'category', boundaryGap:false, data:periods, axisLine:{lineStyle:{color:gc}}, axisTick:{show:false}, axisLabel:_fundAxisLabel(periods)},
-      yAxis:{type:'value', min:0, max:100, axisLine:{show:false}, axisLabel:{color:tc,fontSize:10, formatter:'{value}%'}, splitLine:{lineStyle:{color:gc,width:0.5}}},
-      tooltip:{trigger:'axis', confine:true, formatter(ps){
-        let s=fundPeriodLabel(ps[0].axisValue);
-        ps.slice().reverse().forEach(p=>{ const a=amt[p.dataIndex][p.seriesIndex];
-          s+='<br/>'+p.marker+p.seriesName+': '+p.value.toFixed(1)+'%  ('+fmtKrwJo(a)+')'; });
-        return s;
-      }},
-      series:echSeries
-    });
-  }
-
-  // 중기 자산배분 목표비중(%). 단기자금은 잔여 운용이라 목표 0.
-  const FUND_TARGET={domestic_stock:20.8, foreign_stock:34.7, domestic_bond:23.1, foreign_bond:7.4, alternative:14.0, short_term:0};
-  // 현재 vs 목표 비중을 가로 그룹막대로 비교(div id는 기존 npsFundPieChart 재사용).
-  function renderFundPieChart(){
-    const el=document.getElementById('npsFundPieChart'), sec=document.getElementById('fundPieSection');
-    const all=_fundSeries();
-    if(!all){ if(sec)sec.style.display='none'; return; }
-    if(sec)sec.style.display='';
-    const latest=all[all.length-1];  // 최신(추정 포함) 시점
-    const tot=FUND_SECTORS.reduce((a,se)=>a+(latest[se.key]||0),0) || 1;
-    // 부문별 현재%/목표%/편차. 목표 큰 순 정렬.
-    const rows=FUND_SECTORS.map(se=>({name:se.name, color:se.color,
-      cur:+((latest[se.key]||0)/tot*100).toFixed(1), tgt:FUND_TARGET[se.key]||0}))
-      .sort((a,b)=>(b.tgt-a.tgt)||(b.cur-a.cur));
-    const cats=rows.map(r=>r.name);
-    const tc=_textColor(), gc=_gridColor();
-    const sub=document.getElementById('fundPieSub');
-    if(sub) sub.textContent=fundPeriodLabel(latest.period)+(latest.estimated?' 추정':' 공표')+' 현재 vs 중기 자산배분 목표 · 현재 막대 끝 = 목표 대비 편차(%p)';
-    _newChart(el).setOption({
-      grid:{left:66,right:64,top:28,bottom:24},
-      legend:{top:0, right:0, data:['현재','목표'], textStyle:{color:tc,fontSize:11}},
-      tooltip:{trigger:'axis', axisPointer:{type:'shadow'}, formatter(ps){
-        const r=rows[ps[0].dataIndex]; const d=+(r.cur-r.tgt).toFixed(1);
-        return '<strong>'+r.name+'</strong><br/>현재 '+r.cur+'%<br/>목표 '+r.tgt+'%<br/>편차 '+(d>=0?'+':'')+d+'%p';
-      }},
-      xAxis:{type:'value', axisLabel:{formatter:'{value}%',color:tc,fontSize:10}, splitLine:{lineStyle:{color:gc,width:0.5}}, axisLine:{show:false}},
-      yAxis:{type:'category', data:cats, axisLabel:{color:tc,fontSize:11}, axisLine:{lineStyle:{color:gc}}, axisTick:{show:false}},
-      series:[
-        {name:'현재', type:'bar', barGap:'10%', barWidth:'36%',
-          data:rows.map(r=>({value:r.cur, diff:+(r.cur-r.tgt).toFixed(1), itemStyle:{color:r.color}})),
-          label:{show:true, position:'right', fontSize:10, color:tc,
-            formatter:p=>p.value+'% ('+(p.data.diff>=0?'+':'')+p.data.diff+')'}},
-        {name:'목표', type:'bar', barWidth:'36%',
-          data:rows.map(r=>r.tgt), itemStyle:{color:_isDark()?'#475569':'#cbd5e1'},
-          label:{show:true, position:'right', fontSize:10, color:tc, formatter:'{c}%'}}
-      ]
-    });
-  }
-
-  function renderCharts(){
-    _charts.forEach(c=>c.dispose()); _charts=[];
-    if(typeof echarts==='undefined') return;
-    renderTreemap(); renderNavWithKospi();
-    renderFundTotalChart(); renderFundCompChart(); renderFundPieChart();
-  }
-
-  /* ---------- 부트스트랩 ---------- */
-  function loadECharts(){
-    return new Promise((resolve,reject)=>{
-      if(typeof echarts!=='undefined'){ resolve(); return; }
-      const s=document.createElement('script');
-      s.src='https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js';
-      s.onload=resolve; s.onerror=reject; document.head.appendChild(s);
-    });
-  }
-
-  // URL 파라미터: ?embed=true (헤더·출처 숨김), ?theme=light|dark (부모 테마 강제)
-  const _params=new URLSearchParams(location.search);
-  const _embed=_params.get('embed')==='true';
-  const _themeParam=_params.get('theme');
-  if(_embed) document.body.classList.add('embed');
-
-  // 테마: 쿼리 theme 우선 → localStorage → 시스템. embed 또는 theme 지정 시 토글 숨김(부모가 제어).
-  const saved=localStorage.getItem('nps-theme');
-  const initial=_themeParam || saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
-  document.documentElement.setAttribute('data-theme', initial);
-  const _toggle=document.getElementById('themeToggle');
-  if(_embed || _themeParam){
-    _toggle.style.display='none';
-  } else {
-    const syncToggleLabel=()=>{ _toggle.textContent = _isDark()?'라이트 모드':'다크 모드'; };
-    _toggle.addEventListener('click',()=>{
-      const next=_isDark()?'light':'dark';
-      document.documentElement.setAttribute('data-theme',next);
-      localStorage.setItem('nps-theme',next);
-      syncToggleLabel(); renderCharts();
-    });
-    syncToggleLabel();
-  }
-
-  renderSummary();
-  renderTable();
-  loadECharts().then(renderCharts).catch(()=>{});
-  window.addEventListener('resize',()=>_charts.forEach(c=>c.resize()));
-})();
-</script>
 </body>
 </html>

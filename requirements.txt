@@ -1,5 +1,4 @@
-pykrx
-yfinance
-requests
-beautifulsoup4
-pandas
+pykrx==1.2.8
+yfinance==1.4.1
+beautifulsoup4==4.15.0
+pandas==2.3.3

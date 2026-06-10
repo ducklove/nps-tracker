@@ -1,0 +1,125 @@
+:root{
+  --bg:#f5f5f5; --surface:#ffffff; --surface-muted:rgba(148,163,184,.10);
+  --text:#1a1a1a; --text-secondary:#666; --border:#e0e0e0; --primary:#2563eb;
+  --up:#dc2626; --down:#2563eb;
+}
+[data-theme="dark"]{
+  --bg:#0f172a; --surface:#1e293b; --surface-muted:rgba(148,163,184,.12);
+  --text:#e2e8f0; --text-secondary:#94a3b8; --border:#334155; --primary:#3b82f6;
+  --up:#fca5a5; --down:#93c5fd;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  font-size:14px; line-height:1.5;
+}
+.container{max-width:1080px; margin:0 auto; padding:24px 16px 64px;}
+header h1{font-size:22px; margin:0 0 6px;}
+.meta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:var(--text-secondary); font-size:12px;}
+.meta .spacer{flex:1;}
+.comp-badge{border:1px solid var(--border); border-radius:999px; padding:2px 9px; background:var(--surface-muted); white-space:nowrap;}
+#themeToggle{
+  background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
+  border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px;
+}
+#themeToggle:hover{color:var(--text);}
+.source-note{
+  margin:14px 0 22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
+  background:var(--surface-muted); color:var(--text-secondary); font-size:12px; line-height:1.55;
+}
+.source-note a{color:var(--primary); text-decoration:none;}
+
+/* 데이터 경고 배너 (amber) — embed 모드에서도 표시(컴팩트) */
+.warn-banner{
+  margin:0 0 18px; padding:10px 14px; border:1px solid rgba(245,158,11,.55); border-radius:10px;
+  background:rgba(245,158,11,.10); color:#92400e; font-size:12px; line-height:1.55;
+}
+[data-theme="dark"] .warn-banner{border-color:rgba(245,158,11,.45); background:rgba(245,158,11,.12); color:#fcd34d;}
+.warn-list{margin:0; padding-left:18px;}
+.warn-list li+li{margin-top:2px;}
+body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
+
+/* 요약 카드 */
+.pf-summary{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:22px;}
+.pf-summary-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px;}
+.pf-summary-label{font-size:12px; color:var(--text-secondary); margin-bottom:6px;}
+.pf-summary-value{font-size:22px; font-weight:700;}
+.pf-summary-sub{font-size:12px; color:var(--text-secondary); margin-top:4px;}
+
+/* 오늘의 기여도 (F-1) */
+.contrib-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px;}
+.contrib-col{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px;}
+.contrib-col-title{font-size:12px; color:var(--text-secondary); margin-bottom:8px;}
+.contrib-row{display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;}
+.contrib-name{flex:0 0 110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.contrib-track{flex:1; height:8px; background:var(--surface-muted); border-radius:4px; overflow:hidden;}
+.contrib-bar{display:block; height:100%; border-radius:4px;}
+.contrib-bar.up{background:var(--up);}
+.contrib-bar.down{background:var(--down);}
+.contrib-val{flex:0 0 70px; text-align:right; font-variant-numeric:tabular-nums;}
+.contrib-none{color:var(--text-secondary); font-size:12px; padding:6px 0;}
+
+/* 섹션 / 차트 */
+.pf-nav-chart-wrap{margin-bottom:26px;}
+.pf-nav-header{margin-bottom:10px;}
+.pf-nav-header h3{font-size:16px; margin:0;}
+.pf-sub{font-size:12px; color:var(--text-secondary); margin-top:3px;}
+.pf-nav-chart-container{height:340px;}
+#npsTreemap{height:560px; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+#npsNavChart,#npsValueChart,#npsFundTotalChart,#npsFundCompChart,#npsFundPieChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+
+/* 섹션 헤더 우측 도구(기간 선택·검색) */
+.pf-flex-header{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+
+/* NAV 기간 선택 (F-2) */
+.pf-range{display:flex; gap:4px;}
+.pf-range button{
+  background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
+  border-radius:8px; padding:3px 9px; cursor:pointer; font-size:12px;
+}
+.pf-range button:hover{color:var(--text);}
+.pf-range button.active{color:var(--primary); border-color:var(--primary); font-weight:600;}
+
+/* 차트 라이브러리 로드 실패 안내 */
+.chart-error{
+  display:flex; align-items:center; justify-content:center; height:100%; min-height:120px;
+  color:var(--text-secondary); font-size:13px;
+}
+
+/* 테이블 */
+.pf-table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
+.pf-table{width:100%; border-collapse:collapse; font-size:13px; background:var(--surface);}
+.pf-table thead th{
+  position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--border);
+  padding:10px 12px; text-align:right; font-weight:600; color:var(--text-secondary); white-space:nowrap;
+}
+.pf-table th.pf-col-name{text-align:left;}
+.pf-table td{padding:9px 12px; text-align:right; white-space:nowrap;}
+.pf-table tbody tr:nth-child(even){background:var(--surface-muted);}
+.pf-table td.pf-col-name{text-align:left;}
+.pf-table td.pf-col-num{text-align:right; color:var(--text-secondary); width:1%;}
+.pf-table td.pf-table-empty{text-align:center; color:var(--text-secondary); padding:18px 12px;}
+.pf-sortable{cursor:pointer; user-select:none;}
+.pf-sortable:hover{color:var(--text);}
+
+/* 테이블 검색 (F-3) */
+.pf-table-tools{display:flex; align-items:center; gap:8px;}
+.pf-search-count{font-size:12px; color:var(--text-secondary); white-space:nowrap;}
+#tableSearch{
+  background:var(--surface); color:var(--text); border:1px solid var(--border);
+  border-radius:8px; padding:5px 10px; font-size:12px; width:180px; max-width:60vw;
+}
+#tableSearch:focus{outline:none; border-color:var(--primary);}
+#tableSearch::placeholder{color:var(--text-secondary);}
+
+.nps-up{color:var(--up);} .nps-down{color:var(--down);} .nps-neutral{color:var(--text-secondary);}
+
+.empty{padding:48px 16px; text-align:center; color:var(--text-secondary);}
+
+/* iframe 임베드(?embed=true): 헤더·출처노트 숨기고 여백 축소 */
+body.embed header, body.embed .source-note{display:none;}
+body.embed .container{padding-top:16px; max-width:none;}
+.load-all-wrap{text-align:center; margin-top:14px;}
+#loadAllBtn{background:var(--surface); color:var(--primary); border:1px solid var(--border); border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px;}
+#loadAllBtn:hover{border-color:var(--primary);}
