@@ -42,6 +42,7 @@ def pipeline(tmp_repo, monkeypatch):
     monkeypatch.setattr(config, "MIN_RESOLVED_HOLDINGS", 2)  # 합성 3종목용 완화
     monkeypatch.setattr(cli, "get_public_holdings", lambda: (_public_rows(), SRC_DATE))
     monkeypatch.setattr(cli, "fetch_fnguide_shares", lambda resolver: {})
+    monkeypatch.setattr(cli, "fetch_dart_nps_shares", lambda holdings: {})
     monkeypatch.setattr(cli, "get_prices_cached", lambda codes, since, until, refresh=False: dict(prices))
     monkeypatch.setattr(cli, "get_kospi_cached",
                         lambda since, until, refresh=False:
@@ -83,6 +84,21 @@ def test_e2e_success(pipeline):
     # 공공데이터 성공 경로 → seed 갱신
     seed = json.loads((tmp / "data" / "seed_holdings_latest.json").read_text(encoding="utf-8"))
     assert seed["date"] == SRC_DATE and len(seed["holdings"]) == 3
+
+
+def test_e2e_dart_overrides_fnguide(pipeline, monkeypatch):
+    """공시수량 우선순위: DART > FnGuide > 연말 추정. 둘 다 있는 종목은 DART 값이 이긴다."""
+    tmp, _ = pipeline
+    monkeypatch.setattr(cli, "fetch_fnguide_shares",
+                        lambda resolver: {CODES[0]: 111_111, CODES[1]: 50_000})
+    monkeypatch.setattr(cli, "fetch_dart_nps_shares",
+                        lambda holdings: {CODES[0]: 999_999})
+    cli.main([])
+    cur = json.loads((tmp / "current.json").read_text(encoding="utf-8"))
+    shares = {h["stock_code"]: h["shares"] for h in cur["holdings"]}
+    assert shares[CODES[0]] == 999_999  # DART가 FnGuide(111,111)를 덮음
+    assert shares[CODES[1]] == 50_000   # DART에 없는 종목은 FnGuide 값
+    assert shares[CODES[2]] != 0        # 둘 다 없는 종목은 연말 추정수량 유지
 
 
 def test_e2e_blocks_on_low_price_coverage(pipeline, monkeypatch):
