@@ -16,6 +16,7 @@ from .io_utils import _read_json
 from .nav import _evaluate_today, _mtd_pct, _today_change_pct, _ytd_pct, build_nav_history
 from .publish import write_outputs
 from .resolver import load_resolver
+from .sources.dart import fetch_dart_nps_shares
 from .sources.datago import get_public_holdings
 from .sources.fnguide import fetch_fnguide_shares
 from .sources.market import _close_on_before, get_kospi_cached, get_prices_cached
@@ -104,16 +105,20 @@ def main(argv=None):
     if args.limit:
         holdings = holdings[:args.limit]
 
-    # 공시종목(5%↑ 대량보유) 수량을 FnGuide 최신 분기 값으로 갱신(공공 연말 추정수량 위에 덮음).
-    # 5% 미만 종목은 공시가 없어 연말 수량을 유지한다. FnGuide 실패 시 공공 수량 그대로.
-    fg = fetch_fnguide_shares(load_resolver())
-    if fg:
+    # 공시종목(5%↑ 대량보유) 수량을 최신 공시 값으로 갱신(공공 연말 추정수량 위에 덮음).
+    # 우선순위: DART 대량보유 공시(공식 API, 공시 당일) > FnGuide(동일 공시의 집계 사이트) > 연말 추정.
+    # 5% 미만 종목은 공시가 없어 연말 수량을 유지한다. 둘 다 실패하면 공공 수량 그대로.
+    overrides = fetch_fnguide_shares(load_resolver())
+    dart = fetch_dart_nps_shares(holdings)  # DART_API_KEY 없으면 빈 dict
+    n_fg = len(overrides)
+    overrides.update(dart)
+    if overrides:
         applied = sum(1 for h in holdings
-                      if h["stock_code"] in fg and fg[h["stock_code"]] != h["shares"])
+                      if h["stock_code"] in overrides and overrides[h["stock_code"]] != h["shares"])
         for h in holdings:
-            if h["stock_code"] in fg:
-                h["shares"] = fg[h["stock_code"]]
-        logger.info("FnGuide 공시수량 갱신: 매칭 %d종목 중 %d종목 변경", len(fg), applied)
+            if h["stock_code"] in overrides:
+                h["shares"] = overrides[h["stock_code"]]
+        logger.info("공시수량 갱신: FnGuide %d·DART %d종목 매칭, %d종목 변경", n_fg, len(dart), applied)
 
     nav_hist = build_nav_history(holdings, prices, src_date, until)
     if not nav_hist:
