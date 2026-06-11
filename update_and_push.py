@@ -47,12 +47,36 @@ def out(*cmd: str) -> str:
     return subprocess.check_output(cmd, cwd=ROOT, text=True, encoding="utf-8").strip()
 
 
+def _preflight() -> None:
+    """nps-tracker 클론 루트에서 실행됐는지 검증 — 아니면 친절한 안내와 함께 중단."""
+    clone_help = (
+        "이 스크립트는 nps-tracker 저장소 클론 루트에 있는 채로 실행해야 합니다:\n"
+        "  git clone https://github.com/ducklove/nps-tracker.git\n"
+        "  cd nps-tracker\n"
+        "  python3 update_and_push.py"
+    )
+    if not os.path.exists(os.path.join(ROOT, "fetch_data.py")):
+        sys.exit(f"중단: 옆에 fetch_data.py가 없습니다(스크립트만 복사된 듯).\n{clone_help}")
+    top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                         cwd=ROOT, capture_output=True, text=True)
+    if top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(ROOT):
+        sys.exit(f"중단: 여기는 git 저장소 루트가 아닙니다.\n{clone_help}")
+    remotes = out("git", "remote").split()
+    if "origin" not in remotes:
+        sys.exit("중단: 'origin' 원격이 없습니다(ZIP 사본으로 추정 — 히스토리가 달라 rebase 불가).\n" + clone_help)
+    url = out("git", "remote", "get-url", "origin")
+    if "nps-tracker" not in url:
+        sys.exit(f"중단: origin이 nps-tracker가 아닙니다({url}).\n{clone_help}")
+
+
 def main() -> None:
     try:  # Windows 콘솔 한글 출력 보호(cli.py와 동일)
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+    _preflight()
 
     branch = out("git", "rev-parse", "--abbrev-ref", "HEAD")
     if branch != "main":
