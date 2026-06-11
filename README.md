@@ -28,6 +28,7 @@
 | 파일 | 설명 |
 | --- | --- |
 | `fetch_data.py` | 실행 진입점(thin wrapper) — `python fetch_data.py [--limit N] [--until D] [--no-public] [--refresh-prices]` |
+| `update_and_push.py` | **로컬 원클릭 발행**: pull → fetch_data.py → 데이터 산출물만 커밋 → push(→ Actions 자동 배포). 추가 인자는 fetch_data.py로 전달 |
 | `nps_tracker/` | 파이프라인 패키지: `config`(상수·임계값) · `sources/`(소스별 수집: datago/fnguide/dart/kosis/sheet/market/sector) · `resolver` · `nav` · `fund` · `archive`(연말 스냅샷·YoY) · `validate`(발행 전 검증 게이트) · `publish` · `cli` |
 | `index.html` + `assets/` | 정적 대시보드(ECharts). `data.json` fetch → `data.js` 폴백(file:// 호환). `i18n.js` 영문 모드(`?lang=en`), PWA 매니페스트·아이콘, OG 카드(`og-image.png`, 일배치 갱신) |
 | `docs/embed.md` | 임베드·JSON 소비 계약(스키마 버전 정책, iframe 파라미터) |
