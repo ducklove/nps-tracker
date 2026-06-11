@@ -1,0 +1,14 @@
+{
+  "name": "국민연금 국내주식 포트폴리오",
+  "short_name": "NPS 추적",
+  "description": "국민연금 보유 국내주식을 일별 종가로 재평가한 NAV·KOSPI 비교 대시보드",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

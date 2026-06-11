@@ -18,7 +18,7 @@ from .nav import _evaluate_today, _mtd_pct, _today_change_pct, _ytd_pct, build_n
 from .publish import write_outputs
 from .resolver import load_resolver
 from .sources.dart import fetch_dart_nps_shares
-from .sources.datago import get_public_holdings
+from .sources.datago import get_foreign_holdings, get_public_holdings
 from .sources.fnguide import fetch_fnguide_shares
 from .sources.market import _close_on_before, get_kospi_cached, get_prices_cached
 from .sources.sector import aggregate_sectors, load_sector_map, sector_for
@@ -162,6 +162,9 @@ def main(argv=None):
     # 연말 구성 YoY(F-6): 아카이브 2개 이상부터 산출(없으면 None → 발행물에서 생략).
     yoy = compute_yoy(prices)
 
+    # 해외주식 스냅샷(F-9): 연 1회 공시, 티커가 없어 정적 표시 전용. 실패 시 None(섹션 숨김).
+    foreign = None if args.no_public else get_foreign_holdings()
+
     # 검증 게이트: 에러면 발행하지 않고 종료(기존 산출물 보존). 경고는 발행물에 포함.
     errors, warnings = run_validation(
         holdings=holdings, evaluated=valid, prices=prices, nav_hist=nav_hist,
@@ -178,7 +181,15 @@ def main(argv=None):
 
     write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd,
                   nav_hist, kospi, fund_portfolio, warnings=warnings,
-                  sectors=sectors, yoy=yoy)
+                  sectors=sectors, yoy=yoy, foreign=foreign)
+
+    # OG 공유 카드(F-13) — Pillow 없거나 그리기 실패해도 발행은 이미 끝났으므로 경고만.
+    if not args.limit:
+        try:
+            from .ogimage import write_og_image
+            write_og_image(nav_hist, nav, today_pct, snap_date)
+        except Exception as exc:
+            logger.warning("OG 이미지 생성 생략: %s", exc)
     fp_n = len(fund_portfolio["series"]) if fund_portfolio else 0
     logger.info("완료: %s | NAV %.2f | 국내주식 %.3f조 | %d종목 | %d일 | 기금부문 %d기간 | 출처 %s",
                 snap_date, nav, total_value / 1e12, len(valid), len(nav_hist), fp_n, source)

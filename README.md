@@ -18,6 +18,8 @@
 - **업종분류**: KRX 업종분류현황(pykrx, `KRX_ID`/`KRX_PW` 데이터포털 계정 필요) → KIND
   상장법인목록(익명, 클라우드 IP 차단 가능) → DART 기업개황 KSIC 중분류(`DART_API_KEY`,
   평가액 상위 400종목) — 섹터별 비중·등락·기여도 집계, 30일 캐시(미커밋)
+- **해외주식**: 「국민연금공단 해외주식 투자정보」(연 1회, 10억원↑) — 티커가 없어 일별
+  재평가 없이 정적 스냅샷 탭으로만 노출. 클라우드 차단 시 `data/seed_foreign_holdings.json` 폴백
 - **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > data.go.kr > KOSIS > seed + 최근월 추정
 - API 키는 환경변수로만 받는다: `DART_API_KEY`(대량보유 공시), `KOSIS_API_KEY`(기금 월별).
   GitHub Actions에서는 저장소 secrets 또는 variables에 등록하면 된다.
@@ -27,7 +29,8 @@
 | --- | --- |
 | `fetch_data.py` | 실행 진입점(thin wrapper) — `python fetch_data.py [--limit N] [--until D] [--no-public] [--refresh-prices]` |
 | `nps_tracker/` | 파이프라인 패키지: `config`(상수·임계값) · `sources/`(소스별 수집: datago/fnguide/dart/kosis/sheet/market/sector) · `resolver` · `nav` · `fund` · `archive`(연말 스냅샷·YoY) · `validate`(발행 전 검증 게이트) · `publish` · `cli` |
-| `index.html` + `assets/` | 정적 대시보드(ECharts). `data.json` fetch → `data.js` 폴백(file:// 호환) |
+| `index.html` + `assets/` | 정적 대시보드(ECharts). `data.json` fetch → `data.js` 폴백(file:// 호환). `i18n.js` 영문 모드(`?lang=en`), PWA 매니페스트·아이콘, OG 카드(`og-image.png`, 일배치 갱신) |
+| `docs/embed.md` | 임베드·JSON 소비 계약(스키마 버전 정책, iframe 파라미터) |
 | `data.js` / `data.json` | 차트 데이터(동일 객체, 자동 생성). `data.js`는 구형 임베드·로컬 열람 호환용 |
 | `current.json` | 전체 보유내역 · 요약 · 자산배분(자동 생성, 허브 등 외부 소비자용) |
 | `data/nav_history.json` | NAV 시계열(매 실행 보유구성 기준일부터 전체 재계산) |

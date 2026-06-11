@@ -45,6 +45,7 @@ def pipeline(tmp_repo, monkeypatch):
     monkeypatch.setattr(cli, "fetch_dart_nps_shares", lambda holdings: {})
     monkeypatch.setattr(cli, "load_sector_map",
                         lambda snap_date, codes=None: {CODES[0]: "전기전자", CODES[1]: "전기전자"})
+    monkeypatch.setattr(cli, "get_foreign_holdings", lambda: None)
     monkeypatch.setattr(cli, "get_prices_cached", lambda codes, since, until, refresh=False: dict(prices))
     monkeypatch.setattr(cli, "get_kospi_cached",
                         lambda since, until, refresh=False:
@@ -88,6 +89,7 @@ def test_e2e_success(pipeline):
     # F-6: 첫 실행 → 기준일 아카이브 생성, 아카이브 1개뿐이라 yoy는 None
     assert os.path.exists(os.path.join(config.ARCHIVE_DIR, f"holdings_{SRC_DATE}.json"))
     assert data["yoy"] is None
+    assert data["foreign"] is None  # F-9: 해외주식 미수집 시 None(섹션 숨김)
 
     cur = json.loads((tmp / "current.json").read_text(encoding="utf-8"))
     assert cur["schemaVersion"] == 2 and len(cur["holdings"]) == 3
@@ -132,6 +134,18 @@ def test_e2e_yoy_published_with_prior_archive(pipeline, monkeypatch):
     assert [r["stock_code"] for r in yoy["removed"]] == ["999999"]
     assert [c["stock_code"] for c in yoy["topChanges"]] == [CODES[0]]
     assert yoy["topChanges"][0]["change_pct"] == 25.0
+
+
+def test_e2e_foreign_published(pipeline, monkeypatch):
+    """해외주식 스냅샷이 있으면 data.json의 foreign 필드로 발행된다."""
+    tmp, _ = pipeline
+    stub = {"date": "2025-12-31", "count": 1, "total": 3_000_000_000_000,
+            "holdings": [{"name": "APPLE INC", "value": 3_000_000_000_000,
+                          "weightPct": 4.5, "ownershipPct": 0.31}]}
+    monkeypatch.setattr(cli, "get_foreign_holdings", lambda: stub)
+    cli.main([])
+    data = json.loads((tmp / "data.json").read_text(encoding="utf-8"))
+    assert data["foreign"] == stub
 
 
 def test_e2e_blocks_on_low_price_coverage(pipeline, monkeypatch):
