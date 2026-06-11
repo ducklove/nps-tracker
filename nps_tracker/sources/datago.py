@@ -78,6 +78,80 @@ def get_public_holdings() -> tuple[list[dict], str] | None:
     return resolved, src_date
 
 
+# ---------- 해외주식 투자정보(F-9): 연 1회 정적 스냅샷 ----------
+def _col(row: dict, *substrs: str) -> str | None:
+    """헤더 표기 변동(공백·괄호 차이)을 흡수해 부분일치로 컬럼 값을 찾는다."""
+    for key, val in row.items():
+        k = str(key or "")
+        if all(s in k for s in substrs):
+            return val
+    return None
+
+
+def fetch_foreign_holdings() -> tuple[list[dict], str]:
+    """해외주식 CSV(discover 전용) → [{name, value(원), weight_pct, ownership_pct}], 기준일.
+
+    종목코드/티커가 없어 가격 재평가는 불가 — 공시 평가액 그대로의 스냅샷이다.
+    """
+    html = _download(config.PUBLIC_FOREIGN_PAGE_URL, retries=1).decode("utf-8", "replace")
+    m = config._PUBLIC_CSV_URL_RE.search(html)
+    if not m:
+        raise RuntimeError("해외주식 CSV URL discover 실패")
+    csv_url = m.group(1).replace("&amp;", "&")
+    dm = config._FOREIGN_DATASET_RE.search(html)
+    if not dm:
+        raise RuntimeError("해외주식 기준일 discover 실패")
+    src_date = f"{dm.group(1)[:4]}-{dm.group(1)[4:6]}-{dm.group(1)[6:8]}"
+    payload = _download(csv_url, referer=config.PUBLIC_FOREIGN_PAGE_URL, retries=1)
+    reader = csv.DictReader(io.StringIO(_decode_csv(payload)))
+    rows: list[dict] = []
+    for row in reader:
+        name = str(_col(row, "종목명") or "").strip()
+        amount_eok = _pf(_col(row, "평가액"))
+        if not name or not amount_eok:
+            continue
+        rows.append({
+            "name": name,
+            "value": round(amount_eok * 100_000_000),
+            "weight_pct": _pf(_col(row, "비중")),
+            "ownership_pct": _pf(_col(row, "지분율")),
+        })
+    rows.sort(key=lambda r: r["value"], reverse=True)
+    return rows, src_date
+
+
+def get_foreign_holdings() -> dict | None:
+    """해외주식 스냅샷: 네트워크(discover) 성공 시 seed 갱신, 실패 시 seed 폴백. 둘 다 없으면 None."""
+    from ..io_utils import _read_json, _write_json
+
+    rows: list[dict] = []
+    src_date = None
+    try:
+        rows, src_date = fetch_foreign_holdings()
+        if rows:
+            _write_json(config.SEED_FOREIGN, {"date": src_date, "holdings": rows})
+            logger.info("해외주식 공시 %s: %d종목 수집(seed 갱신)", src_date, len(rows))
+    except Exception as exc:
+        logger.warning("해외주식 수집 실패(seed 폴백): %s", exc)
+    if not rows:
+        seed = _read_json(config.SEED_FOREIGN, {}) or {}
+        rows, src_date = seed.get("holdings") or [], seed.get("date")
+    if not rows or not src_date:
+        return None
+    total = sum(r.get("value") or 0 for r in rows)
+    return {
+        "date": src_date,
+        "count": len(rows),
+        "total": total,  # 공시 종목(10억원↑ 한정) 평가액 합 — 부문 전체 평가액보다 작다
+        "holdings": [{
+            "name": r["name"],
+            "value": r.get("value"),
+            "weightPct": r.get("weight_pct"),
+            "ownershipPct": r.get("ownership_pct"),
+        } for r in rows[:config.FOREIGN_TOP_N]],
+    }
+
+
 # ---------- 기금 전체·부문별 평가액: 「기금 포트폴리오 현황」(data.go.kr) ----------
 def _parse_fund_period(col: str) -> str | None:
     """컬럼 헤더 → 기준연월. '2026년 2월(십억 원)'→'2026-02', '2025년(십억 원)'→'2025-12'.

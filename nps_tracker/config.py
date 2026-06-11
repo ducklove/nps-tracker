@@ -35,6 +35,12 @@ PUBLIC_NPS_FALLBACK_CSV_URL = (
     "?atchFileId=FILE_000000003558824&fileDetailSn=1&insertDataPrcus=N"
 )
 PUBLIC_NPS_FALLBACK_DATE = "2024-12-31"
+# 해외주식 투자정보(연말 공시, 10억원 미만 제외, 단위 억원·%) — 종목코드가 없어 일별 재평가 불가,
+# 연 1회 정적 스냅샷 탭(F-9)으로만 노출. atchFileId 고정 fallback은 없고 discover 전용
+# (클라우드에서는 data.go.kr이 막히므로 로컬 실행이 seed를 갱신·커밋하는 국내주식과 같은 패턴).
+PUBLIC_FOREIGN_PAGE_URL = "https://www.data.go.kr/data/3070517/fileData.do"
+SEED_FOREIGN = os.path.join(DATA, "seed_foreign_holdings.json")
+FOREIGN_TOP_N = 50  # 발행물에 싣는 해외주식 상위 종목 수
 FNGUIDE_URL = "https://comp.fnguide.com/SVO/WooriRenewal/Inst_Data.asp?strInstCD=49530"
 # 기금 전체·부문별 평가액(시가) — 「국민연금공단_기금 포트폴리오 현황」(연말+최신월 스냅샷, 십억원)
 FUND_PORTFOLIO_PAGE_URL = "https://www.data.go.kr/data/15106894/fileData.do"
@@ -67,6 +73,7 @@ DART_NPS_REPORTER_SUBSTR = "국민연금"  # 보고자(repror) 매칭 부분문�
 
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
+_FOREIGN_DATASET_RE = re.compile(r"국민연금공단_해외주식 투자정보_(\d{8})")
 _PUBLIC_CSV_URL_RE = re.compile(r'"contentUrl"\s*:\s*"([^"]+fileDownload\.do[^"]+)"')
 
 # ---------- 자산군 매핑 ----------

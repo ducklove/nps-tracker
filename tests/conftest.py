@@ -37,4 +37,5 @@ def tmp_repo(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DART_CORP_CACHE", str(data / "dart_corp_codes.json"))
     monkeypatch.setattr(config, "ARCHIVE_DIR", str(data / "archive"))
     monkeypatch.setattr(config, "SECTOR_CACHE", str(data / "sector_cache.json"))
+    monkeypatch.setattr(config, "SEED_FOREIGN", str(data / "seed_foreign_holdings.json"))
     return tmp_path

@@ -29,7 +29,7 @@ def _composition(source: str) -> dict:
 
 def write_outputs(snap_date, source, holdings, total_value, nav,
                   today_pct, mtd, ytd, hist, kospi, fund_portfolio=None, warnings=None,
-                  sectors=None, yoy=None):
+                  sectors=None, yoy=None, foreign=None):
     holdings = sorted(holdings, key=lambda h: h["market_value"], reverse=True)
     total_disp = sum(h["market_value"] for h in holdings) or 0
     hjson = [{
@@ -84,6 +84,7 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "warnings": warnings,
         "sectors": sectors or [],  # F-7 섹터별 비중·등락·기여도(업종 매핑 실패 시 빈 배열)
         "yoy": yoy,                # F-6 연말 구성 YoY 요약(아카이브 2개 미만이면 None)
+        "foreign": foreign,        # F-9 해외주식 연말 스냅샷(공시 평가액 그대로, 없으면 None)
     }
 
     payload = json.dumps(nps_data, ensure_ascii=False)
