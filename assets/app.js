@@ -163,6 +163,10 @@
         let sub=tt('기준일 {d} · {n}종목', {d:p.date||pt.asOf||'-', n:(b.success||p.symbols||0).toLocaleString(LOC)});
         if(b.coveragePct!=null) sub+=tt(' · 커버리지 {c}%', {c:b.coveragePct.toFixed(1)});
         cards.push({label:t('연기금 순매수'), value:fmtSignedKrw(p.netValue), sub:sub, cls:pctClass(p.netValue)});
+      } else if(pt && pt.status==='error'){
+        const b=pt.basis||{};
+        const sub=tt('KIS 조회 실패 · {n}종목 시도', {n:(b.queried||0).toLocaleString(LOC)});
+        cards.push({label:t('연기금 순매수'), value:t('조회 실패'), sub:sub, cls:'nps-neutral'});
       }
       document.getElementById('summary').innerHTML = cards.map(c=>
         '<div class="pf-summary-card"><div class="pf-summary-label">'+c.label+'</div>'+

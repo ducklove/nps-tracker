@@ -96,3 +96,28 @@ def test_get_pension_trade_trend_uses_configured_limit(monkeypatch):
     assert trend["latest"]["netValue"] == 100_000_000
     assert trend["basis"]["eligible"] == 2
     assert trend["basis"]["queried"] == 1
+
+
+def test_get_pension_trade_trend_returns_error_when_all_kis_calls_fail(monkeypatch):
+    holdings = [{"stock_code": "005930", "market_value": 10_000_000_000}]
+
+    def fetcher(symbol, base_date):
+        raise RuntimeError("HTTP 403: Forbidden")
+
+    from nps_tracker import config
+
+    monkeypatch.setattr(config, "KIS_PENSION_TRADE_LIMIT", 1)
+    monkeypatch.setattr(config, "KIS_REQUEST_SLEEP_SEC", 0)
+
+    trend = get_pension_trade_trend(
+        holdings,
+        "2026-06-19",
+        total_value=10_000_000_000,
+        fetcher=fetcher,
+    )
+
+    assert trend["status"] == "error"
+    assert trend["error"] == "HTTP 403: Forbidden"
+    assert trend["basis"]["queried"] == 1
+    assert trend["basis"]["success"] == 0
+    assert trend["series"] == []

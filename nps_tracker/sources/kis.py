@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
@@ -129,9 +130,20 @@ def _request_json(method: str, url: str, *, headers=None, query=None, body=None,
     data = None
     if body is not None:
         data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8")
+    req_headers = {"User-Agent": config._USER_AGENT}
+    req_headers.update(headers or {})
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(raw)
+            msg = payload.get("msg1") or payload.get("msg_cd") or raw[:300]
+        except Exception:
+            msg = raw[:300] if raw else exc.reason
+        raise RuntimeError(f"HTTP {exc.code}: {msg}") from exc
     return json.loads(raw)
 
 
@@ -326,6 +338,7 @@ def get_pension_trade_trend(
     base_date = _yyyymmdd(as_of)
     symbol_rows = []
     failures = 0
+    last_error = None
     for h in selected:
         code = str(h.get("stock_code")).strip()
         try:
@@ -338,6 +351,7 @@ def get_pension_trade_trend(
             return None
         except Exception as exc:
             failures += 1
+            last_error = str(exc)
             if failures <= 5:
                 logger.warning("KIS pension trade skipped for %s: %s", code, exc)
         sleep_sec = getattr(config, "KIS_REQUEST_SLEEP_SEC", 0)
@@ -348,6 +362,28 @@ def get_pension_trade_trend(
         logger.warning("KIS pension trade skipped for %d more symbols", failures - 5)
 
     coverage_value = sum((h.get("market_value") or 0) for h in selected)
+    if not symbol_rows and failures:
+        return {
+            "source": "KIS Open API",
+            "endpoint": "investor-trade-by-stock-daily",
+            "trId": TR_ID_INVESTOR_TRADE_BY_STOCK_DAILY,
+            "unit": "KRW",
+            "asOf": as_of,
+            "status": "error",
+            "error": last_error or "KIS request failed",
+            "basis": {
+                "aggregation": "held domestic stocks",
+                "limit": limit if limit and limit > 0 else None,
+                "eligible": len(eligible),
+                "queried": len(selected),
+                "success": 0,
+                "coverageValue": coverage_value,
+                "coveragePct": (float(coverage_value or 0) / float(total_value or 0) * 100)
+                if total_value else None,
+                "amountSourceUnit": "million KRW",
+            },
+            "series": [],
+        }
     return aggregate_pension_trade(
         symbol_rows,
         as_of=as_of,

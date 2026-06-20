@@ -27,6 +27,8 @@ window.NPS_I18N = {
     "연기금 순매수": "Pension fund net buy",
     "기준일 {d} · {n}종목": "As of {d} · {n} stocks",
     " · 커버리지 {c}%": " · coverage {c}%",
+    "조회 실패": "Fetch failed",
+    "KIS 조회 실패 · {n}종목 시도": "KIS fetch failed · {n} attempted",
 
     /* 기여도 */
     "오늘의 기여도": "Today's contributors",
