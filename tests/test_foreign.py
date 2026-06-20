@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from nps_tracker import config
 from nps_tracker.sources import datago
 
@@ -34,7 +36,8 @@ def test_get_foreign_holdings_saves_seed_and_shapes(tmp_repo, monkeypatch):
     assert out["date"] == "2025-12-31" and out["count"] == 1
     assert out["total"] == 3_000_000_000_000
     assert out["holdings"][0] == {"name": "APPLE INC", "value": 3_000_000_000_000,
-                                  "weightPct": 4.5, "ownershipPct": 0.31}
+                                  "weightPct": 4.5, "ownershipPct": 0.31,
+                                  "country": "미국", "ticker": "AAPL"}
     seed = json.load(open(config.SEED_FOREIGN, encoding="utf-8"))
     assert seed["date"] == "2025-12-31" and len(seed["holdings"]) == 1
 
@@ -58,3 +61,32 @@ def test_foreign_top_n_limit(tmp_repo, monkeypatch):
          for i in range(5)], "2025-12-31"))
     out = datago.get_foreign_holdings()
     assert out["count"] == 5 and len(out["holdings"]) == 2  # count는 전체, 목록은 상위 N
+
+
+def test_foreign_current_estimates(tmp_repo, monkeypatch):
+    monkeypatch.setattr(datago, "fetch_foreign_holdings", lambda: (
+        [{"name": "APPLE INC", "value": 3_000_000_000_000, "weight_pct": 4.5, "ownership_pct": 0.31}],
+        "2025-12-31"))
+    monkeypatch.setattr(datago, "fetch_foreign_market_data", lambda rows, src_date, as_of: {
+        "APPLE INC": {
+            "ticker": "AAPL",
+            "country": "미국",
+            "currency": "USD",
+            "priceScale": 1.0,
+            "sourcePrice": 100.0,
+            "sourcePriceDate": "2025-12-31",
+            "sourceFx": 1000.0,
+            "sourceFxDate": "2025-12-31",
+            "currentPrice": 200.0,
+            "currentPriceDate": "2026-01-09",
+            "currentFx": 1200.0,
+            "currentFxDate": "2026-01-09",
+        }
+    })
+    out = datago.get_foreign_holdings(as_of="2026-01-09", foreign_stock_total=100_000_000_000_000)
+    h = out["holdings"][0]
+    assert out["asOf"] == "2026-01-09"
+    assert out["currentPricedCount"] == 1
+    assert h["estimatedShares"] == 30_000_000
+    assert h["currentValue"] == 7_200_000_000_000
+    assert h["currentWeightPct"] == pytest.approx(7.2)

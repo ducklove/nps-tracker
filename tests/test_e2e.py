@@ -45,7 +45,8 @@ def pipeline(tmp_repo, monkeypatch):
     monkeypatch.setattr(cli, "fetch_dart_nps_shares", lambda holdings: {})
     monkeypatch.setattr(cli, "load_sector_map",
                         lambda snap_date, codes=None: {CODES[0]: "전기전자", CODES[1]: "전기전자"})
-    monkeypatch.setattr(cli, "get_foreign_holdings", lambda: None)
+    monkeypatch.setattr(cli, "get_foreign_holdings", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli, "get_pension_trade_trend", lambda *args, **kwargs: None)
     monkeypatch.setattr(cli, "get_prices_cached", lambda codes, since, until, refresh=False: dict(prices))
     monkeypatch.setattr(cli, "get_kospi_cached",
                         lambda since, until, refresh=False:
@@ -142,10 +143,28 @@ def test_e2e_foreign_published(pipeline, monkeypatch):
     stub = {"date": "2025-12-31", "count": 1, "total": 3_000_000_000_000,
             "holdings": [{"name": "APPLE INC", "value": 3_000_000_000_000,
                           "weightPct": 4.5, "ownershipPct": 0.31}]}
-    monkeypatch.setattr(cli, "get_foreign_holdings", lambda: stub)
+    monkeypatch.setattr(cli, "get_foreign_holdings", lambda *args, **kwargs: stub)
     cli.main([])
     data = json.loads((tmp / "data.json").read_text(encoding="utf-8"))
     assert data["foreign"] == stub
+
+
+def test_e2e_pension_trade_published(pipeline, monkeypatch):
+    """KIS 연기금 매매동향이 있으면 data.json/current.json에 함께 발행한다."""
+    tmp, _ = pipeline
+    stub = {
+        "source": "KIS Open API",
+        "asOf": "2026-01-09",
+        "latest": {"date": "2026-01-09", "netValue": 1_000_000_000, "symbols": 3},
+        "basis": {"eligible": 3, "queried": 3, "success": 3, "coveragePct": 100.0},
+        "series": [{"date": "2026-01-09", "netValue": 1_000_000_000, "symbols": 3}],
+    }
+    monkeypatch.setattr(cli, "get_pension_trade_trend", lambda *args, **kwargs: stub)
+    cli.main([])
+    data = json.loads((tmp / "data.json").read_text(encoding="utf-8"))
+    current = json.loads((tmp / "current.json").read_text(encoding="utf-8"))
+    assert data["pensionTrade"] == stub
+    assert current["pensionTrade"] == stub
 
 
 def test_e2e_blocks_on_low_price_coverage(pipeline, monkeypatch):

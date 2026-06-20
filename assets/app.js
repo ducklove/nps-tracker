@@ -99,7 +99,26 @@
       if(av>=1e8){ const x=v/1e8; const d=av>=1e11?0:av>=1e10?1:av>=1e9?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'억'; }
       return Math.round(v).toLocaleString('ko-KR')+'원';
     }
+    function fmtSignedKrw(v){ if(v==null) return '-'; return (v>0?'+':'')+fmtKrwJo(v); }
+    function fmtKrwAxis(v){
+      const av=Math.abs(v||0);
+      if(_lang==='en'){
+        if(av>=1e12) return (v/1e12).toFixed(1)+'T';
+        if(av>=1e9) return (v/1e9).toFixed(0)+'B';
+        if(av>=1e6) return (v/1e6).toFixed(0)+'M';
+        return Math.round(v).toLocaleString(LOC);
+      }
+      if(av>=1e12) return (v/1e12).toFixed(1)+'조';
+      if(av>=1e8) return (v/1e8).toFixed(0)+'억';
+      return Math.round(v).toLocaleString('ko-KR');
+    }
     function fmtPct(v){ if(v==null) return '-'; return (v>0?'+':'')+v.toFixed(2)+'%'; }
+    function fmtPlainPct(v){ if(v==null) return '-'; return v.toFixed(2)+'%'; }
+    function fmtShares(v){
+      if(v==null) return '-';
+      const av=Math.abs(v);
+      return Number(v).toLocaleString(LOC,{maximumFractionDigits:av>=1000?0:2});
+    }
     function pctClass(v){ if(v==null||v===0) return 'nps-neutral'; return v>0?'nps-up':'nps-down'; }
 
     /* 등락률 → 색 (snapshot_nps의 returnToColor 이식) */
@@ -138,6 +157,13 @@
         {label:'MTD', value:fmtPct(s.mtdPct), sub:t('전월말 대비'), cls:pctClass(s.mtdPct)},
         {label:'YTD', value:fmtPct(s.ytdPct), sub:t('연초 대비'), cls:pctClass(s.ytdPct)},
       ];
+      const pt=DATA.pensionTrade;
+      if(pt && pt.latest){
+        const p=pt.latest, b=pt.basis||{};
+        let sub=tt('기준일 {d} · {n}종목', {d:p.date||pt.asOf||'-', n:(b.success||p.symbols||0).toLocaleString(LOC)});
+        if(b.coveragePct!=null) sub+=tt(' · 커버리지 {c}%', {c:b.coveragePct.toFixed(1)});
+        cards.push({label:t('연기금 순매수'), value:fmtSignedKrw(p.netValue), sub:sub, cls:pctClass(p.netValue)});
+      }
       document.getElementById('summary').innerHTML = cards.map(c=>
         '<div class="pf-summary-card"><div class="pf-summary-label">'+c.label+'</div>'+
         '<div class="pf-summary-value '+c.cls+'">'+c.value+'</div>'+
@@ -274,7 +300,7 @@
     }
 
     /* ---------- 해외주식 스냅샷 (F-9) ----------
-       연 1회 공시(티커 없음 → 일별 재평가 불가)라 공시 평가액 그대로 상위 종목만 표시. */
+       공시 CSV에는 티커가 없어 상위 종목명 매핑이 가능한 항목만 현재가 기반 추정치를 표시한다. */
     function renderForeign(){
       const sec=document.getElementById('foreignSection');
       const tbody=document.querySelector('#foreignTable tbody');
@@ -282,16 +308,20 @@
       const f=DATA.foreign;
       const rows=(f && f.holdings)||[];
       if(!rows.length) return;
-      tbody.innerHTML=rows.slice(0,20).map((h,i)=>'<tr>'+
+      tbody.innerHTML=rows.slice(0,50).map((h,i)=>'<tr>'+
         '<td>'+(i+1)+'</td>'+
         '<td class="pf-col-name" title="'+esc(h.name)+'">'+esc(h.name)+'</td>'+
+        '<td>'+(h.country?esc(h.country):'-')+'</td>'+
         '<td>'+(h.value!=null?fmtKrwJo(h.value):'-')+'</td>'+
-        '<td>'+(h.weightPct!=null?h.weightPct.toFixed(2)+'%':'-')+'</td>'+
+        '<td>'+fmtPlainPct(h.weightPct)+'</td>'+
+        '<td>'+(h.estimatedShares!=null?fmtShares(h.estimatedShares):'-')+'</td>'+
+        '<td>'+(h.currentValue!=null?fmtKrwJo(h.currentValue):'-')+'</td>'+
+        '<td>'+fmtPlainPct(h.currentWeightPct)+'</td>'+
         '<td>'+(h.ownershipPct!=null?h.ownershipPct.toFixed(2)+'%':'-')+'</td>'+
       '</tr>').join('');
       const sub=document.getElementById('foreignSub');
-      if(sub) sub.textContent=tt('{d} 연말 공시 기준 · 공시 {n}종목(원화 10억원 미만 제외) 중 상위 {k}종목 · 공시 평가액 합 {v}',
-        {d:f.date, n:f.count||rows.length, k:Math.min(rows.length,20), v:fmtKrwJo(f.total||0)});
+      if(sub) sub.textContent=tt('{d} 연말 공시 기준 · 공시 {n}종목(원화 10억원 미만 제외) 중 상위 {k}종목 · 공시 평가액 합 {v} · 현재가 추정 {p}/{k}종목',
+        {d:f.date, n:f.count||rows.length, k:Math.min(rows.length,50), v:fmtKrwJo(f.total||0), p:f.currentPricedCount||0});
       sec.style.display='';
     }
 
@@ -507,19 +537,34 @@
       const kRaw=nav.map(d=>kospiByDate[d.date]!=null?kospiByDate[d.date]:null);
       let kNorm=[]; const kBase=kRaw.find(v=>v!=null&&v>0);
       if(kBase) kNorm=kRaw.map(v=>v!=null?+(v/kBase*1000).toFixed(2):null);
+      const pensionRows=(DATA.pensionTrade&&DATA.pensionTrade.series)||[];
+      const pensionByDate=Object.fromEntries(pensionRows.map(d=>[d.date,d.netValue]));
+      const pensionValues=nav.map(d=>pensionByDate[d.date]!=null?pensionByDate[d.date]:null);
+      const hasPension=pensionValues.some(v=>v!=null);
+      const pensionSeriesName=t('연기금 순매수');
       renderNavStats(nav, kRaw);   // 구간 성과 지표(F-8) — 기간 선택과 함께 갱신
-      const series=[{name:t('국민연금'), type:'line', data:navValues, symbol:'none', smooth:false,
+      const series=[{name:t('국민연금'), type:'line', data:navValues, symbol:'none', smooth:false, z:3,
         lineStyle:{color:navColor,width:2}, itemStyle:{color:navColor},
         areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:navColor+'33'},{offset:1,color:navColor+'00'}]}}}];
-      if(kNorm.length){ series.push({name:'KOSPI', type:'line', data:kNorm, symbol:'none', smooth:false, lineStyle:{color:'#94a3b8',width:1.5,type:'dashed'}, itemStyle:{color:'#94a3b8'}}); }
+      if(kNorm.length){ series.push({name:'KOSPI', type:'line', data:kNorm, symbol:'none', smooth:false, z:3, lineStyle:{color:'#94a3b8',width:1.5,type:'dashed'}, itemStyle:{color:'#94a3b8'}}); }
+      if(hasPension){ series.push({name:pensionSeriesName, type:'bar', yAxisIndex:1, data:pensionValues, z:1,
+        barMaxWidth:12, itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.30)':'rgba(37,99,235,0.30)'},
+        emphasis:{itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.55)':'rgba(37,99,235,0.55)'}}}); }
       const T=_chartTheme();
+      const yAxes=[T.val(null, {scale:true})];
+      if(hasPension){ yAxes.push(T.val({color:T.tc,fontSize:10, formatter:v=>fmtKrwAxis(v)}, {scale:true, splitLine:{show:false}})); }
       _newChart(el).setOption({
-        grid:{left:60,right:14,top:28,bottom:26},
-        legend:T.legend({show:kNorm.length>0, top:0, right:0}),
+        grid:{left:60,right:hasPension?72:14,top:28,bottom:26},
+        legend:T.legend({show:kNorm.length>0||hasPension, top:0, right:0}),
         xAxis:T.cat(labels, null, {splitLine:{show:false}}),
-        yAxis:T.val(null, {scale:true}),
+        yAxis:yAxes,
         /* 값이 구간 시작=1000 기준이므로 퍼센트도 구간 시작 대비 */
-        tooltip:{trigger:'axis', formatter(ps){let s=esc(ps[0].axisValue); ps.forEach(p=>{const pct=((p.value/1000-1)*100).toFixed(2); s+='<br/>'+p.marker+' '+p.seriesName+': '+p.value.toLocaleString()+' ('+(pct>0?'+':'')+pct+'%)';}); return s;}},
+        tooltip:{trigger:'axis', formatter(ps){let s=esc(ps[0].axisValue); ps.forEach(p=>{
+          if(p.value==null) return;
+          if(p.seriesName===pensionSeriesName){ s+='<br/>'+p.marker+' '+p.seriesName+': '+fmtSignedKrw(p.value); return; }
+          const pct=((p.value/1000-1)*100).toFixed(2);
+          s+='<br/>'+p.marker+' '+p.seriesName+': '+Number(p.value).toLocaleString(LOC)+' ('+(pct>0?'+':'')+pct+'%)';
+        }); return s;}},
         series:series
       });
     }

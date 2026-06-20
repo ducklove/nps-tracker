@@ -24,6 +24,9 @@ window.NPS_I18N = {
     "전월말 대비": "vs prior month-end",
     "연초 대비": "vs start of year",
     "기준일": "As of",
+    "연기금 순매수": "Pension fund net buy",
+    "기준일 {d} · {n}종목": "As of {d} · {n} stocks",
+    " · 커버리지 {c}%": " · coverage {c}%",
 
     /* 기여도 */
     "오늘의 기여도": "Today's contributors",
@@ -102,8 +105,13 @@ window.NPS_I18N = {
 
     /* 해외주식 */
     "해외주식 보유 (연 1회 공시)": "Foreign equity holdings (annual filing)",
+    "국가": "Country",
+    "평가금액(공시일)": "Value (filing date)",
+    "비중(공시일)": "Weight (filing date)",
+    "평가금액(현재)": "Value (current)",
+    "비중(현재)": "Weight (current)",
     "자산군 내 비중": "Asset class weight",
-    "{d} 연말 공시 기준 · 공시 {n}종목(원화 10억원 미만 제외) 중 상위 {k}종목 · 공시 평가액 합 {v}":
-      "Year-end filing {d} · top {k} of {n} disclosed holdings (≥ ₩1bn) · disclosed total {v}"
+    "{d} 연말 공시 기준 · 공시 {n}종목(원화 10억원 미만 제외) 중 상위 {k}종목 · 공시 평가액 합 {v} · 현재가 추정 {p}/{k}종목":
+      "Year-end filing {d} · top {k} of {n} disclosed holdings (≥ ₩1bn) · disclosed total {v} · current estimates {p}/{k}"
   }
 };

@@ -20,6 +20,7 @@ from .resolver import load_resolver
 from .sources.dart import fetch_dart_nps_shares
 from .sources.datago import get_foreign_holdings, get_public_holdings
 from .sources.fnguide import fetch_fnguide_shares
+from .sources.kis import get_pension_trade_trend
 from .sources.market import _close_on_before, get_kospi_cached, get_prices_cached
 from .sources.sector import aggregate_sectors, load_sector_map, sector_for
 from .validate import run_validation
@@ -163,7 +164,19 @@ def main(argv=None):
     yoy = compute_yoy(prices)
 
     # 해외주식 스냅샷(F-9): 연 1회 공시, 티커가 없어 정적 표시 전용. 실패 시 None(섹션 숨김).
-    foreign = None if args.no_public else get_foreign_holdings()
+    foreign_stock_total = None
+    try:
+        fp_series = (fund_portfolio or {}).get("series") or []
+        if fp_series:
+            foreign_stock_total = fp_series[-1].get("foreign_stock")
+    except Exception:
+        foreign_stock_total = None
+    foreign = None if args.no_public else get_foreign_holdings(
+        as_of=snap_date, foreign_stock_total=foreign_stock_total
+    )
+    pension_trade = None if args.no_public else get_pension_trade_trend(
+        valid, snap_date, total_value=total_value
+    )
 
     # 검증 게이트: 에러면 발행하지 않고 종료(기존 산출물 보존). 경고는 발행물에 포함.
     errors, warnings = run_validation(
@@ -181,7 +194,7 @@ def main(argv=None):
 
     write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd,
                   nav_hist, kospi, fund_portfolio, warnings=warnings,
-                  sectors=sectors, yoy=yoy, foreign=foreign)
+                  sectors=sectors, yoy=yoy, foreign=foreign, pension_trade=pension_trade)
 
     # OG 공유 카드(F-13) — Pillow 없거나 그리기 실패해도 발행은 이미 끝났으므로 경고만.
     if not args.limit:

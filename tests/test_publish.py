@@ -18,6 +18,13 @@ FUND = {"unit": "won", "asOf": "2026-02", "monthlyFrom": "2025-12", "estimatedFr
         "series": [{"period": "2026-02", "domestic_stock": 100, "foreign_stock": 200,
                     "domestic_bond": 50, "foreign_bond": 25, "alternative": 60,
                     "short_term": 5, "total": 440}]}
+PENSION_TRADE = {
+    "source": "KIS Open API",
+    "asOf": "2026-06-09",
+    "latest": {"date": "2026-06-09", "netValue": 123_000_000, "symbols": 2},
+    "basis": {"eligible": 2, "queried": 2, "success": 2, "coveragePct": 100.0},
+    "series": [{"date": "2026-06-09", "netValue": 123_000_000, "symbols": 2}],
+}
 
 
 def _holdings():
@@ -98,6 +105,16 @@ def test_v2_fields_added(published):
     assert fp["series"] == FUND["series"] and fp["asOf"] == "2026-02"
     # 호출자가 넘긴 dict는 오염시키지 않는다
     assert "targets" not in FUND
+
+
+def test_pension_trade_added_to_outputs(tmp_repo):
+    write_outputs("2026-06-09", "seed(2024-12-31)", _holdings(), 31_000, 1033.33,
+                  None, None, None, HIST, [], fund_portfolio=None,
+                  pension_trade=PENSION_TRADE)
+    data_json = json.loads((tmp_repo / "data.json").read_text(encoding="utf-8"))
+    current = json.loads((tmp_repo / "current.json").read_text(encoding="utf-8"))
+    assert data_json["pensionTrade"] == PENSION_TRADE
+    assert current["pensionTrade"] == PENSION_TRADE
 
 
 def test_holdings_sorted_and_weighted(published):

@@ -17,6 +17,7 @@ SEED_FUND_PORTFOLIO = os.path.join(DATA, "seed_fund_portfolio.json")
 NAV_HISTORY = os.path.join(DATA, "nav_history.json")
 # 가격 증분 캐시 — git에 커밋하지 않음(.gitignore). GitHub Actions에서는 actions/cache로 영속.
 PRICE_CACHE = os.path.join(DATA, "price_cache.json")
+KIS_TOKEN_CACHE = os.path.join(DATA, "kis_token.json")
 # 연말 보유구성 스냅샷 보존 디렉터리(F-6) — 커밋 대상(공시 원본 이력 = 콘텐츠 자산).
 ARCHIVE_DIR = os.path.join(DATA, "archive")
 # KRX 업종분류 캐시(F-7) — 미커밋, Actions에서는 actions/cache로 영속(DART corpCode와 같은 패턴).
@@ -41,6 +42,11 @@ PUBLIC_NPS_FALLBACK_DATE = "2024-12-31"
 PUBLIC_FOREIGN_PAGE_URL = "https://www.data.go.kr/data/3070517/fileData.do"
 SEED_FOREIGN = os.path.join(DATA, "seed_foreign_holdings.json")
 FOREIGN_TOP_N = 50  # 발행물에 싣는 해외주식 상위 종목 수
+KIS_BASE_URL = os.environ.get("KIS_BASE_URL", "https://openapi.koreainvestment.com:9443").rstrip("/")
+KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
+KIS_INVESTOR_TRADE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
+KIS_PENSION_TRADE_LIMIT = int(os.environ.get("KIS_PENSION_TRADE_LIMIT", "100"))
+KIS_REQUEST_SLEEP_SEC = float(os.environ.get("KIS_REQUEST_SLEEP_SEC", "0.05"))
 FNGUIDE_URL = "https://comp.fnguide.com/SVO/WooriRenewal/Inst_Data.asp?strInstCD=49530"
 # 기금 전체·부문별 평가액(시가) — 「국민연금공단_기금 포트폴리오 현황」(연말+최신월 스냅샷, 십억원)
 FUND_PORTFOLIO_PAGE_URL = "https://www.data.go.kr/data/15106894/fileData.do"
