@@ -338,9 +338,11 @@ def get_pension_trade_trend(
     base_date = _yyyymmdd(as_of)
     symbol_rows = []
     failures = 0
+    attempted = 0
     last_error = None
     for h in selected:
         code = str(h.get("stock_code")).strip()
+        attempted += 1
         try:
             payload = fetcher(code, base_date)
             rows = extract_pension_trade_rows(payload)
@@ -354,6 +356,9 @@ def get_pension_trade_trend(
             last_error = str(exc)
             if failures <= 5:
                 logger.warning("KIS pension trade skipped for %s: %s", code, exc)
+            if failures >= 5 and not symbol_rows:
+                logger.warning("KIS pension trade aborted after %d consecutive failures", failures)
+                break
         sleep_sec = getattr(config, "KIS_REQUEST_SLEEP_SEC", 0)
         if sleep_sec and fetcher is fetch_investor_trade_by_stock_daily:
             time.sleep(float(sleep_sec))
@@ -375,7 +380,7 @@ def get_pension_trade_trend(
                 "aggregation": "held domestic stocks",
                 "limit": limit if limit and limit > 0 else None,
                 "eligible": len(eligible),
-                "queried": len(selected),
+                "queried": attempted,
                 "success": 0,
                 "coverageValue": coverage_value,
                 "coveragePct": (float(coverage_value or 0) / float(total_value or 0) * 100)
@@ -389,7 +394,7 @@ def get_pension_trade_trend(
         as_of=as_of,
         total_value=total_value,
         eligible_count=len(eligible),
-        queried_count=len(selected),
+        queried_count=attempted,
         success_count=len(symbol_rows),
         coverage_value=coverage_value,
         limit=limit,
