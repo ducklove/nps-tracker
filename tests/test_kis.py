@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from nps_tracker.sources import kis
 from nps_tracker.sources.kis import (
     aggregate_pension_trade,
     extract_pension_trade_rows,
@@ -121,3 +122,41 @@ def test_get_pension_trade_trend_returns_error_when_all_kis_calls_fail(monkeypat
     assert trend["basis"]["queried"] == 1
     assert trend["basis"]["success"] == 0
     assert trend["series"] == []
+
+
+def test_load_dotenv_recovers_wrapped_kis_app_secret(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text(
+        "\n".join([
+            "KIS_APP_KEY=app-key",
+            "KIS_APP_SECRET=first",
+            "middle",
+            "last/part=",
+            'KIS_ACCESS_TOKEN=""',
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(kis.config, "ROOT", str(tmp_path))
+    monkeypatch.setattr(kis, "_DOTENV_CACHE", None)
+
+    env = kis._load_dotenv()
+
+    assert env["KIS_APP_SECRET"] == "firstmiddlelast/part="
+    assert "last/part" not in env
+    assert env["KIS_ACCESS_TOKEN"] == ""
+
+
+def test_credentials_compact_secret_whitespace(monkeypatch):
+    monkeypatch.setenv("KIS_APP_KEY", " app\n key ")
+    monkeypatch.setenv("KIS_APP_SECRET", " sec\n ret ")
+    monkeypatch.setattr(kis, "_DOTENV_CACHE", None)
+
+    assert kis._credentials() == ("appkey", "secret")
+
+
+def test_kis_base_url_can_come_from_dotenv(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text("KIS_BASE_URL=https://example.test:9443\n", encoding="utf-8")
+    monkeypatch.delenv("KIS_BASE_URL", raising=False)
+    monkeypatch.setattr(kis.config, "ROOT", str(tmp_path))
+    monkeypatch.setattr(kis, "_DOTENV_CACHE", None)
+
+    assert kis._kis_base_url() == "https://example.test:9443"

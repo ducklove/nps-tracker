@@ -78,6 +78,7 @@ jobs:
           # KRX 데이터포털 계정(선택) — 있으면 섹터를 KRX 표준 업종분류로, 없으면 KIND 산업분류로.
           KRX_ID: ${{ secrets.KRX_ID || vars.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW || vars.KRX_PW }}
+          KIS_BASE_URL: ${{ secrets.KIS_BASE_URL || vars.KIS_BASE_URL }}
           KIS_APP_KEY: ${{ secrets.KIS_APP_KEY || vars.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET || vars.KIS_APP_SECRET }}
           KIS_ACCESS_TOKEN: ${{ secrets.KIS_ACCESS_TOKEN || vars.KIS_ACCESS_TOKEN }}

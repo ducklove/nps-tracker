@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -19,6 +20,8 @@ logger = logging.getLogger("nps")
 TR_ID_INVESTOR_TRADE_BY_STOCK_DAILY = "FHPTJ04160001"
 PBMN_TO_KRW = 1_000_000
 _DOTENV_CACHE: dict[str, str] | None = None
+_ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_MULTILINE_DOTENV_KEYS = {"KIS_APP_SECRET", "KOREAINVESTMENT_APP_SECRET", "KOREA_INVESTMENT_APP_SECRET"}
 
 
 class KISCredentialsMissing(RuntimeError):
@@ -31,6 +34,20 @@ def _env_first(*names: str) -> str | None:
         if value:
             return value.strip()
     return None
+
+
+def _compact_secret(value: str | None) -> str | None:
+    if value is None:
+        return None
+    compacted = "".join(value.strip().strip('"').strip("'").split())
+    return compacted or None
+
+
+def _is_env_assignment(line: str) -> bool:
+    if "=" not in line:
+        return False
+    key, _ = line.split("=", 1)
+    return bool(_ENV_ASSIGNMENT_RE.fullmatch(key.strip()))
 
 
 def _windows_env(name: str) -> str | None:
@@ -65,12 +82,25 @@ def _load_dotenv() -> dict[str, str]:
         path = os.path.join(config.ROOT, filename)
         try:
             with open(path, encoding="utf-8") as f:
-                for raw in f:
-                    line = raw.strip()
+                lines = f.read().splitlines()
+                i = 0
+                while i < len(lines):
+                    line = lines[i].strip()
+                    i += 1
                     if not line or line.startswith("#") or "=" not in line:
                         continue
                     key, value = line.split("=", 1)
                     key = key.strip()
+                    if key in _MULTILINE_DOTENV_KEYS:
+                        fragments = []
+                        while i < len(lines):
+                            next_line = lines[i].strip()
+                            if not next_line or next_line.startswith("#") or _is_env_assignment(next_line):
+                                break
+                            fragments.append(next_line)
+                            i += 1
+                        if fragments:
+                            value += "".join(fragments)
                     value = value.strip().strip('"').strip("'")
                     if key and key not in env:
                         env[key] = value
@@ -85,9 +115,25 @@ def _dotenv_env(name: str) -> str | None:
 
 
 def _credentials() -> tuple[str | None, str | None]:
-    app_key = _env_first("KIS_APP_KEY", "KOREAINVESTMENT_APP_KEY", "KOREA_INVESTMENT_APP_KEY")
-    app_secret = _env_first("KIS_APP_SECRET", "KOREAINVESTMENT_APP_SECRET", "KOREA_INVESTMENT_APP_SECRET")
+    app_key = _compact_secret(_env_first("KIS_APP_KEY", "KOREAINVESTMENT_APP_KEY", "KOREA_INVESTMENT_APP_KEY"))
+    app_secret = _compact_secret(_env_first(
+        "KIS_APP_SECRET",
+        "KOREAINVESTMENT_APP_SECRET",
+        "KOREA_INVESTMENT_APP_SECRET",
+    ))
     return app_key, app_secret
+
+
+def _kis_base_url() -> str:
+    return (_env_first("KIS_BASE_URL") or config.KIS_BASE_URL).rstrip("/")
+
+
+def _kis_token_url() -> str:
+    return f"{_kis_base_url()}/oauth2/tokenP"
+
+
+def _kis_investor_trade_url() -> str:
+    return f"{_kis_base_url()}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
 
 
 def _num(v) -> int:
@@ -162,7 +208,7 @@ def _cached_token() -> str | None:
 def get_access_token(app_key: str, app_secret: str) -> str:
     explicit = _env_first("KIS_ACCESS_TOKEN", "KOREAINVESTMENT_ACCESS_TOKEN", "KOREA_INVESTMENT_ACCESS_TOKEN")
     if explicit:
-        return explicit.removeprefix("Bearer ").strip()
+        return "".join(explicit.removeprefix("Bearer ").strip().split())
 
     cached = _cached_token()
     if cached:
@@ -170,7 +216,7 @@ def get_access_token(app_key: str, app_secret: str) -> str:
 
     payload = _request_json(
         "POST",
-        config.KIS_TOKEN_URL,
+        _kis_token_url(),
         headers={"content-type": "application/json; charset=utf-8"},
         body={"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
         timeout=20,
@@ -203,7 +249,7 @@ def fetch_investor_trade_by_stock_daily(symbol: str, base_date: str) -> dict:
     }
     payload = _request_json(
         "GET",
-        config.KIS_INVESTOR_TRADE_URL,
+        _kis_investor_trade_url(),
         headers=headers,
         query={
             "FID_COND_MRKT_DIV_CODE": "J",
