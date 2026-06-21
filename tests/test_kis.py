@@ -4,6 +4,7 @@ from nps_tracker.sources import kis
 from nps_tracker.sources.kis import (
     aggregate_pension_trade,
     extract_pension_trade_rows,
+    get_market_pension_trade_trend,
     get_pension_trade_trend,
 )
 
@@ -97,6 +98,58 @@ def test_get_pension_trade_trend_uses_configured_limit(monkeypatch):
     assert trend["latest"]["netValue"] == 100_000_000
     assert trend["basis"]["eligible"] == 2
     assert trend["basis"]["queried"] == 1
+
+
+def test_market_pension_trade_trend_sums_kospi_and_kosdaq():
+    calls = []
+
+    def fetcher(market, base_date):
+        calls.append((market, base_date))
+        values = {
+            "KOSPI": [("20260618", "-192900"), ("20260619", "-526700")],
+            "KOSDAQ": [("20260618", "31090"), ("20260619", "-12507")],
+        }[market]
+        return {"output": [
+            {"stck_bsop_date": d, "fund_ntby_qty": "0", "fund_ntby_tr_pbmn": v}
+            for d, v in values
+        ]}
+
+    trend = get_market_pension_trade_trend(
+        "2026-06-19",
+        total_value=10_000_000_000_000,
+        fetcher=fetcher,
+    )
+
+    assert calls == [("KOSPI", "20260619"), ("KOSDAQ", "20260619")]
+    assert trend["endpoint"] == "inquire-investor-daily-by-market"
+    assert trend["trId"] == "FHPTJ04040000"
+    assert trend["basis"]["aggregation"] == "KOSPI + KOSDAQ markets"
+    assert trend["basis"]["queried"] == 2
+    assert trend["basis"]["success"] == 2
+    assert trend["latest"]["date"] == "2026-06-19"
+    assert trend["latest"]["netValue"] == -539_207_000_000
+    assert trend["latest"]["marketValues"] == {
+        "KOSPI": -526_700_000_000,
+        "KOSDAQ": -12_507_000_000,
+    }
+    assert trend["latest"]["netValuePct"] == -5.39207
+
+
+def test_get_pension_trade_trend_defaults_to_market_fetcher():
+    def market_fetcher(market, base_date):
+        return {"output": [
+            {"stck_bsop_date": "20260619", "fund_ntby_qty": "0", "fund_ntby_tr_pbmn": "1"}
+        ]}
+
+    trend = get_pension_trade_trend(
+        [{"stock_code": "005930", "market_value": 10_000_000_000}],
+        "2026-06-19",
+        market_fetcher=market_fetcher,
+    )
+
+    assert trend["endpoint"] == "inquire-investor-daily-by-market"
+    assert trend["latest"]["netValue"] == 2_000_000
+    assert trend["basis"]["success"] == 2
 
 
 def test_get_pension_trade_trend_returns_error_when_all_kis_calls_fail(monkeypatch):

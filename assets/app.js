@@ -160,7 +160,12 @@
       const pt=DATA.pensionTrade;
       if(pt && pt.latest){
         const p=pt.latest, b=pt.basis||{};
-        let sub=tt('기준일 {d} · {n}종목', {d:p.date||pt.asOf||'-', n:(b.success||p.symbols||0).toLocaleString(LOC)});
+        const basisUnit=String(b.aggregation||'').indexOf('market')>=0 ? t('개 시장') : t('종목');
+        let sub=tt('기준일 {d} · {n}{unit}', {
+          d:p.date||pt.asOf||'-',
+          n:(b.success||p.markets||p.symbols||0).toLocaleString(LOC),
+          unit:basisUnit,
+        });
         if(b.coveragePct!=null) sub+=tt(' · 커버리지 {c}%', {c:b.coveragePct.toFixed(1)});
         cards.push({label:t('연기금 순매수'), value:fmtSignedKrw(p.netValue), sub:sub, cls:pctClass(p.netValue)});
       } else if(pt && pt.status==='error'){
@@ -516,6 +521,72 @@
       el.style.display='';
     }
 
+    function renderPensionTradeChart(){
+      const sec=document.getElementById('pensionTradeSection');
+      const el=document.getElementById('npsPensionTradeChart');
+      if(!sec || !el) return;
+      const pt=DATA.pensionTrade;
+      const all=(pt&&pt.series||[]).filter(d=>d&&d.date);
+      if(!all.length || pt.status==='error'){ sec.style.display='none'; return; }
+      let rows=all.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+      if(_navRange!=='all'){
+        const asOf=(DATA.summary||{}).asOf||DATA.asOf||rows[rows.length-1].date;
+        const cut=_rangeCutoff(_navRange, asOf);
+        if(cut){ const w=rows.filter(d=>d.date>=cut); if(w.length) rows=w; }
+      }
+      const labels=rows.map(d=>String(d.date).slice(5));
+      const buyValues=rows.map(d=>d.buyValue!=null?d.buyValue:null);
+      const sellValues=rows.map(d=>d.sellValue!=null?d.sellValue:null);
+      const netValues=rows.map(d=>d.netValue!=null?d.netValue:null);
+      const hasGross=buyValues.some(v=>v!=null)||sellValues.some(v=>v!=null);
+      if(!netValues.some(v=>v!=null) && !hasGross){ sec.style.display='none'; return; }
+
+      const b=pt.basis||{};
+      const sub=document.getElementById('pensionTradeSub');
+      if(sub){
+        const n=(b.success||b.markets&&b.markets.length||0).toLocaleString(LOC);
+        let txt=tt('기준일 {d} · {n}개 시장 · {source}', {
+          d:pt.asOf||rows[rows.length-1].date||'-',
+          n:n,
+          source:(pt.source||'KIS')+' '+(pt.endpoint||''),
+        });
+        if(!hasGross) txt+=' · '+t('매수/매도 총액 미제공 · 순매수만 표시');
+        sub.textContent=txt;
+      }
+
+      const T=_chartTheme();
+      const series=[];
+      if(hasGross){
+        series.push({name:t('매수'), type:'bar', data:buyValues, barMaxWidth:10,
+          itemStyle:{color:'rgba(220,38,38,0.62)'}});
+        series.push({name:t('매도'), type:'bar', data:sellValues, barMaxWidth:10,
+          itemStyle:{color:'rgba(37,99,235,0.62)'}});
+        series.push({name:t('순매수'), type:'line', data:netValues, symbol:'none', smooth:false,
+          lineStyle:{color:'#64748b',width:1.8}, itemStyle:{color:'#64748b'}});
+      } else {
+        series.push({name:t('순매수'), type:'bar', data:netValues, barMaxWidth:12,
+          itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.60)':'rgba(37,99,235,0.60)'},
+          emphasis:{itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.78)':'rgba(37,99,235,0.78)'}}});
+      }
+      sec.style.display='';
+      _newChart(el).setOption({
+        grid:{left:60,right:18,top:34,bottom:26},
+        legend:T.legend({show:true, top:2, right:0}),
+        xAxis:T.cat(labels, null, {splitLine:{show:false}}),
+        yAxis:T.val({color:T.tc,fontSize:10, formatter:v=>fmtKrwAxis(v)}, {scale:true}),
+        tooltip:{trigger:'axis', formatter(ps){
+          let s=esc(ps[0].axisValue);
+          ps.forEach(p=>{
+            if(p.value==null) return;
+            const signed=p.seriesName===t('순매수');
+            s+='<br/>'+p.marker+' '+p.seriesName+': '+(signed?fmtSignedKrw(p.value):fmtKrwJo(p.value));
+          });
+          return s;
+        }},
+        series:series
+      });
+    }
+
     function renderNavWithKospi(){
       const el=document.getElementById('npsNavChart');
       const navAll=DATA.navHistory||[];
@@ -541,31 +612,20 @@
       const kRaw=nav.map(d=>kospiByDate[d.date]!=null?kospiByDate[d.date]:null);
       let kNorm=[]; const kBase=kRaw.find(v=>v!=null&&v>0);
       if(kBase) kNorm=kRaw.map(v=>v!=null?+(v/kBase*1000).toFixed(2):null);
-      const pensionRows=(DATA.pensionTrade&&DATA.pensionTrade.series)||[];
-      const pensionByDate=Object.fromEntries(pensionRows.map(d=>[d.date,d.netValue]));
-      const pensionValues=nav.map(d=>pensionByDate[d.date]!=null?pensionByDate[d.date]:null);
-      const hasPension=pensionValues.some(v=>v!=null);
-      const pensionSeriesName=t('연기금 순매수');
       renderNavStats(nav, kRaw);   // 구간 성과 지표(F-8) — 기간 선택과 함께 갱신
       const series=[{name:t('국민연금'), type:'line', data:navValues, symbol:'none', smooth:false, z:3,
         lineStyle:{color:navColor,width:2}, itemStyle:{color:navColor},
         areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:navColor+'33'},{offset:1,color:navColor+'00'}]}}}];
       if(kNorm.length){ series.push({name:'KOSPI', type:'line', data:kNorm, symbol:'none', smooth:false, z:3, lineStyle:{color:'#94a3b8',width:1.5,type:'dashed'}, itemStyle:{color:'#94a3b8'}}); }
-      if(hasPension){ series.push({name:pensionSeriesName, type:'bar', yAxisIndex:1, data:pensionValues, z:1,
-        barMaxWidth:12, itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.30)':'rgba(37,99,235,0.30)'},
-        emphasis:{itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.55)':'rgba(37,99,235,0.55)'}}}); }
       const T=_chartTheme();
-      const yAxes=[T.val(null, {scale:true})];
-      if(hasPension){ yAxes.push(T.val({color:T.tc,fontSize:10, formatter:v=>fmtKrwAxis(v)}, {scale:true, splitLine:{show:false}})); }
       _newChart(el).setOption({
-        grid:{left:60,right:hasPension?72:14,top:28,bottom:26},
-        legend:T.legend({show:kNorm.length>0||hasPension, top:0, right:0}),
+        grid:{left:60,right:14,top:28,bottom:26},
+        legend:T.legend({show:kNorm.length>0, top:0, right:0}),
         xAxis:T.cat(labels, null, {splitLine:{show:false}}),
-        yAxis:yAxes,
+        yAxis:T.val(null, {scale:true}),
         /* 값이 구간 시작=1000 기준이므로 퍼센트도 구간 시작 대비 */
         tooltip:{trigger:'axis', formatter(ps){let s=esc(ps[0].axisValue); ps.forEach(p=>{
           if(p.value==null) return;
-          if(p.seriesName===pensionSeriesName){ s+='<br/>'+p.marker+' '+p.seriesName+': '+fmtSignedKrw(p.value); return; }
           const pct=((p.value/1000-1)*100).toFixed(2);
           s+='<br/>'+p.marker+' '+p.seriesName+': '+Number(p.value).toLocaleString(LOC)+' ('+(pct>0?'+':'')+pct+'%)';
         }); return s;}},
@@ -579,7 +639,7 @@
           if(btn.dataset.range===_navRange) return;
           _navRange=btn.dataset.range;
           _rangeWrap.querySelectorAll('button[data-range]').forEach(b=>b.classList.toggle('active', b===btn));
-          if(typeof echarts!=='undefined') renderNavWithKospi();
+          if(typeof echarts!=='undefined'){ renderPensionTradeChart(); renderNavWithKospi(); }
         });
       });
     }
@@ -712,21 +772,27 @@
     function renderCharts(){
       _charts.forEach(c=>c.dispose()); _charts=[];
       if(typeof echarts==='undefined') return;
-      renderTreemap(); renderNavWithKospi();
+      renderTreemap(); renderPensionTradeChart(); renderNavWithKospi();
       renderFundTotalChart(); renderFundCompChart(); renderFundPieChart();
     }
 
     /* ECharts CDN 로드 실패: 빈 화면 대신 안내 문구. 기금 데이터가 없는 섹션은 기존처럼 숨김. */
     function showChartError(){
       const hasFund=!!_fundSeries();
+      const hasPension=!!(DATA.pensionTrade && DATA.pensionTrade.series && DATA.pensionTrade.series.length);
       [
         {id:'npsTreemap'},
+        {id:'npsPensionTradeChart', section:'pensionTradeSection', needsPension:true},
         {id:'npsNavChart'},
         {id:'npsFundTotalChart', section:'fundTotalSection', needsFund:true},
         {id:'npsFundCompChart',  section:'fundCompSection',  needsFund:true},
         {id:'npsFundPieChart',   section:'fundPieSection',   needsFund:true},
       ].forEach(cs=>{
         if(cs.needsFund && !hasFund){
+          const sec=document.getElementById(cs.section); if(sec) sec.style.display='none';
+          return;
+        }
+        if(cs.needsPension && !hasPension){
           const sec=document.getElementById(cs.section); if(sec) sec.style.display='none';
           return;
         }

@@ -18,10 +18,15 @@ from ..io_utils import _read_json, _write_json, _yyyymmdd
 logger = logging.getLogger("nps")
 
 TR_ID_INVESTOR_TRADE_BY_STOCK_DAILY = "FHPTJ04160001"
+TR_ID_INVESTOR_DAILY_BY_MARKET = "FHPTJ04040000"
 PBMN_TO_KRW = 1_000_000
 _DOTENV_CACHE: dict[str, str] | None = None
 _ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _MULTILINE_DOTENV_KEYS = {"KIS_APP_SECRET", "KOREAINVESTMENT_APP_SECRET", "KOREA_INVESTMENT_APP_SECRET"}
+_KIS_MARKETS = (
+    {"name": "KOSPI", "market": "KSP", "symbol": "0001"},
+    {"name": "KOSDAQ", "market": "KSQ", "symbol": "1001"},
+)
 
 
 class KISCredentialsMissing(RuntimeError):
@@ -134,6 +139,10 @@ def _kis_token_url() -> str:
 
 def _kis_investor_trade_url() -> str:
     return f"{_kis_base_url()}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
+
+
+def _kis_investor_daily_by_market_url() -> str:
+    return f"{_kis_base_url()}/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market"
 
 
 def _num(v) -> int:
@@ -267,6 +276,64 @@ def fetch_investor_trade_by_stock_daily(symbol: str, base_date: str) -> dict:
     return payload
 
 
+def fetch_investor_daily_by_market(market: str, base_date: str) -> dict:
+    """Fetch daily market-level investor trade data for KOSPI or KOSDAQ."""
+    spec = next((m for m in _KIS_MARKETS if m["name"] == market), None)
+    if not spec:
+        raise ValueError(f"Unsupported KIS market: {market}")
+    app_key, app_secret = _credentials()
+    if not app_key or not app_secret:
+        raise KISCredentialsMissing("KIS_APP_KEY/KIS_APP_SECRET are not configured")
+
+    token = get_access_token(app_key, app_secret)
+    headers = {
+        "content-type": "application/json; charset=utf-8",
+        "authorization": f"Bearer {token}",
+        "appkey": app_key,
+        "appsecret": app_secret,
+        "tr_id": TR_ID_INVESTOR_DAILY_BY_MARKET,
+        "custtype": "P",
+    }
+    ymd = _yyyymmdd(base_date)
+    payload = _request_json(
+        "GET",
+        _kis_investor_daily_by_market_url(),
+        headers=headers,
+        query={
+            # KIS market/sector investor endpoint accepts "U"; "J" is for stock-level queries.
+            "FID_COND_MRKT_DIV_CODE": "U",
+            "FID_INPUT_ISCD": spec["symbol"],
+            "FID_INPUT_DATE_1": ymd,
+            "FID_INPUT_ISCD_1": spec["market"],
+            "FID_INPUT_DATE_2": ymd,
+            "FID_INPUT_ISCD_2": spec["symbol"],
+        },
+        timeout=20,
+    )
+    rt_cd = payload.get("rt_cd")
+    if rt_cd not in (None, "0", 0):
+        msg = payload.get("msg1") or payload.get("msg_cd") or payload
+        raise RuntimeError(f"KIS investor-daily-by-market failed for {market}: {msg}")
+    return payload
+
+
+def extract_pension_market_trade_rows(payload: dict, market: str) -> list[dict]:
+    """Extract pension-fund net trade rows from a KIS market-level payload."""
+    out = []
+    for row in payload.get("output") or []:
+        d = _iso_date(row.get("stck_bsop_date"))
+        if not d:
+            continue
+        out.append({
+            "date": d,
+            "market": market,
+            "close": _float(row.get("bstp_nmix_prpr")),
+            "netShares": _num(row.get("fund_ntby_qty")),
+            "netValue": _num(row.get("fund_ntby_tr_pbmn")) * PBMN_TO_KRW,
+        })
+    return sorted(out, key=lambda r: r["date"])
+
+
 def extract_pension_trade_rows(payload: dict) -> list[dict]:
     """Extract only pension-fund rows from a KIS investor-trade payload."""
     out = []
@@ -356,20 +423,146 @@ def aggregate_pension_trade(
     }
 
 
+def aggregate_market_pension_trade(
+    market_rows: Iterable[tuple[str, list[dict]]],
+    *,
+    as_of: str,
+    total_value: float | int | None = None,
+    queried_count: int = 0,
+    success_count: int = 0,
+) -> dict | None:
+    by_date: dict[str, dict] = defaultdict(lambda: {
+        "netShares": 0,
+        "netValue": 0,
+        "markets": 0,
+        "marketValues": {},
+    })
+    for market, rows in market_rows:
+        seen_dates = set()
+        for row in rows:
+            d = row.get("date")
+            if not d or d > as_of:
+                continue
+            value = _num(row.get("netValue"))
+            acc = by_date[d]
+            acc["netShares"] += _num(row.get("netShares"))
+            acc["netValue"] += value
+            acc["marketValues"][market] = value
+            seen_dates.add(d)
+        for d in seen_dates:
+            by_date[d]["markets"] += 1
+
+    if not by_date:
+        return None
+
+    tv = float(total_value or 0)
+    series = []
+    for d in sorted(by_date):
+        row = {"date": d, **by_date[d]}
+        row["netValuePct"] = (row["netValue"] / tv * 100) if tv else None
+        series.append(row)
+    latest = series[-1]
+    return {
+        "source": "KIS Open API",
+        "endpoint": "inquire-investor-daily-by-market",
+        "trId": TR_ID_INVESTOR_DAILY_BY_MARKET,
+        "unit": "KRW",
+        "asOf": latest["date"],
+        "latest": latest,
+        "basis": {
+            "aggregation": "KOSPI + KOSDAQ markets",
+            "markets": [m["name"] for m in _KIS_MARKETS],
+            "queried": queried_count,
+            "success": success_count,
+            "amountSourceUnit": "million KRW",
+        },
+        "series": series,
+    }
+
+
+def get_market_pension_trade_trend(
+    as_of: str,
+    total_value: float | int | None = None,
+    *,
+    fetcher: Callable[[str, str], dict] | None = None,
+) -> dict | None:
+    """Aggregate KIS pension-fund daily trades across KOSPI and KOSDAQ markets."""
+    if fetcher is None:
+        app_key, app_secret = _credentials()
+        if not app_key or not app_secret:
+            logger.info("KIS credentials missing; market pension trade trend skipped")
+            return None
+        fetcher = fetch_investor_daily_by_market
+
+    base_date = _yyyymmdd(as_of)
+    market_rows = []
+    failures = 0
+    attempted = 0
+    last_error = None
+    for spec in _KIS_MARKETS:
+        market = spec["name"]
+        attempted += 1
+        try:
+            payload = fetcher(market, base_date)
+            rows = extract_pension_market_trade_rows(payload, market)
+            if rows:
+                market_rows.append((market, rows))
+        except KISCredentialsMissing:
+            logger.info("KIS credentials missing; market pension trade trend skipped")
+            return None
+        except Exception as exc:
+            failures += 1
+            last_error = str(exc)
+            logger.warning("KIS market pension trade skipped for %s: %s", market, exc)
+
+    if not market_rows and failures:
+        return {
+            "source": "KIS Open API",
+            "endpoint": "inquire-investor-daily-by-market",
+            "trId": TR_ID_INVESTOR_DAILY_BY_MARKET,
+            "unit": "KRW",
+            "asOf": as_of,
+            "status": "error",
+            "error": last_error or "KIS market request failed",
+            "basis": {
+                "aggregation": "KOSPI + KOSDAQ markets",
+                "markets": [m["name"] for m in _KIS_MARKETS],
+                "queried": attempted,
+                "success": 0,
+                "amountSourceUnit": "million KRW",
+            },
+            "series": [],
+        }
+
+    return aggregate_market_pension_trade(
+        market_rows,
+        as_of=as_of,
+        total_value=total_value,
+        queried_count=attempted,
+        success_count=len(market_rows),
+    )
+
+
 def get_pension_trade_trend(
     holdings: list[dict],
     as_of: str,
     total_value: float | int | None = None,
     *,
     fetcher: Callable[[str, str], dict] | None = None,
+    market_fetcher: Callable[[str, str], dict] | None = None,
 ) -> dict | None:
-    """Aggregate KIS pension-fund daily trades across held domestic stocks."""
+    """Aggregate KIS pension-fund daily trades.
+
+    The production path uses KIS market-level KOSPI/KOSDAQ daily data. Passing
+    fetcher keeps the older held-stock aggregation path available for tests and
+    narrow diagnostics.
+    """
     if fetcher is None:
-        app_key, app_secret = _credentials()
-        if not app_key or not app_secret:
-            logger.info("KIS credentials missing; pension trade trend skipped")
-            return None
-        fetcher = fetch_investor_trade_by_stock_daily
+        return get_market_pension_trade_trend(
+            as_of,
+            total_value=total_value,
+            fetcher=market_fetcher,
+        )
 
     eligible = [
         h for h in holdings
