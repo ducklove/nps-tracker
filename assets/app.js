@@ -475,6 +475,7 @@
 
     /* ---------- NAV vs KOSPI (+ 기간 선택 F-2) ---------- */
     let _navRange='all';
+    let _pensionTradeRange='all';
     /* asOf에서 캘린더 기준으로 거슬러 올라간 절단일(YYYY-MM-DD). 'all'·파싱 불가 시 null. */
     function _rangeCutoff(range, asOf){
       if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf||'')) return null;
@@ -521,17 +522,39 @@
       el.style.display='';
     }
 
+    function renderPensionTradeStats(rows){
+      const el=document.getElementById('pensionTradeStats');
+      if(!el) return;
+      if(!rows || !rows.length){ el.style.display='none'; return; }
+      const total=rows.reduce((a,d)=>a+(Number(d.netValue)||0),0);
+      const start=rows[0].date||'-';
+      const end=rows[rows.length-1].date||'-';
+      const chips=[
+        {k:t('구간'), v:start===end?start:start+'~'+end, cls:''},
+        {k:t('구간 합계'), v:fmtSignedKrw(total), cls:pctClass(total)},
+      ];
+      el.innerHTML=chips.map(c=>
+        '<span class="stat-chip"><span class="stat-k">'+c.k+'</span>'+
+        '<span class="stat-v '+c.cls+'">'+c.v+'</span></span>').join('');
+      el.style.display='';
+    }
+
     function renderPensionTradeChart(){
       const sec=document.getElementById('pensionTradeSection');
       const el=document.getElementById('npsPensionTradeChart');
+      const stats=document.getElementById('pensionTradeStats');
       if(!sec || !el) return;
       const pt=DATA.pensionTrade;
       const all=(pt&&pt.series||[]).filter(d=>d&&d.date);
-      if(!all.length || pt.status==='error'){ sec.style.display='none'; return; }
+      if(!all.length || pt.status==='error'){
+        sec.style.display='none';
+        if(stats) stats.style.display='none';
+        return;
+      }
       let rows=all.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-      if(_navRange!=='all'){
-        const asOf=(DATA.summary||{}).asOf||DATA.asOf||rows[rows.length-1].date;
-        const cut=_rangeCutoff(_navRange, asOf);
+      if(_pensionTradeRange!=='all'){
+        const asOf=pt.asOf||rows[rows.length-1].date;
+        const cut=_rangeCutoff(_pensionTradeRange, asOf);
         if(cut){ const w=rows.filter(d=>d.date>=cut); if(w.length) rows=w; }
       }
       const labels=rows.map(d=>String(d.date).slice(5));
@@ -539,7 +562,11 @@
       const sellValues=rows.map(d=>d.sellValue!=null?d.sellValue:null);
       const netValues=rows.map(d=>d.netValue!=null?d.netValue:null);
       const hasGross=buyValues.some(v=>v!=null)||sellValues.some(v=>v!=null);
-      if(!netValues.some(v=>v!=null) && !hasGross){ sec.style.display='none'; return; }
+      if(!netValues.some(v=>v!=null) && !hasGross){
+        sec.style.display='none';
+        if(stats) stats.style.display='none';
+        return;
+      }
 
       const b=pt.basis||{};
       const sub=document.getElementById('pensionTradeSub');
@@ -550,7 +577,6 @@
           n:n,
           source:(pt.source||'KIS')+' '+(pt.endpoint||''),
         });
-        if(!hasGross) txt+=' · '+t('매수/매도 총액 미제공 · 순매수만 표시');
         sub.textContent=txt;
       }
 
@@ -564,20 +590,25 @@
         series.push({name:t('순매수'), type:'line', data:netValues, symbol:'none', smooth:false,
           lineStyle:{color:'#64748b',width:1.8}, itemStyle:{color:'#64748b'}});
       } else {
-        series.push({name:t('순매수'), type:'bar', data:netValues, barMaxWidth:12,
+        series.push({name:'', type:'bar', data:netValues, barMaxWidth:12,
           itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.60)':'rgba(37,99,235,0.60)'},
           emphasis:{itemStyle:{color:p=>(p.value||0)>=0?'rgba(220,38,38,0.78)':'rgba(37,99,235,0.78)'}}});
       }
       sec.style.display='';
+      renderPensionTradeStats(rows);
       _newChart(el).setOption({
-        grid:{left:60,right:18,top:34,bottom:26},
-        legend:T.legend({show:true, top:2, right:0}),
+        grid:{left:60,right:18,top:hasGross?34:18,bottom:26},
+        legend:T.legend({show:hasGross, top:2, right:0}),
         xAxis:T.cat(labels, null, {splitLine:{show:false}}),
         yAxis:T.val({color:T.tc,fontSize:10, formatter:v=>fmtKrwAxis(v)}, {scale:true}),
         tooltip:{trigger:'axis', formatter(ps){
           let s=esc(ps[0].axisValue);
           ps.forEach(p=>{
             if(p.value==null) return;
+            if(!hasGross){
+              s+='<br/>'+p.marker+' '+fmtSignedKrw(p.value);
+              return;
+            }
             const signed=p.seriesName===t('순매수');
             s+='<br/>'+p.marker+' '+p.seriesName+': '+(signed?fmtSignedKrw(p.value):fmtKrwJo(p.value));
           });
@@ -639,7 +670,18 @@
           if(btn.dataset.range===_navRange) return;
           _navRange=btn.dataset.range;
           _rangeWrap.querySelectorAll('button[data-range]').forEach(b=>b.classList.toggle('active', b===btn));
-          if(typeof echarts!=='undefined'){ renderPensionTradeChart(); renderNavWithKospi(); }
+          if(typeof echarts!=='undefined'){ renderNavWithKospi(); }
+        });
+      });
+    }
+    const _pensionTradeRangeWrap=document.getElementById('pensionTradeRange');
+    if(_pensionTradeRangeWrap){
+      _pensionTradeRangeWrap.querySelectorAll('button[data-range]').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          if(btn.dataset.range===_pensionTradeRange) return;
+          _pensionTradeRange=btn.dataset.range;
+          _pensionTradeRangeWrap.querySelectorAll('button[data-range]').forEach(b=>b.classList.toggle('active', b===btn));
+          if(typeof echarts!=='undefined'){ renderPensionTradeChart(); }
         });
       });
     }
