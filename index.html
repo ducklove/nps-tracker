@@ -22,9 +22,7 @@
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/app.css?v=3">
 <!-- 데이터는 app.js가 data.json(fetch) → data.js(script) 순으로 캐시버스팅 로드해
-     iframe 임베드에서도 항상 최신을 보장한다. ECharts는 SRI 적용해 CDN에서 동적 로드.
-     i18n.js(영문 사전)는 app.js보다 먼저 로드(둘 다 defer — 문서 순서 실행). -->
-<script src="assets/i18n.js?v=3" defer></script>
+     iframe 임베드에서도 항상 최신을 보장한다. ECharts는 SRI 적용해 CDN에서 동적 로드. -->
 <script src="assets/app.js?v=3" defer></script>
 </head>
 <body>
@@ -35,7 +33,6 @@
       <span id="metaAsOf"></span>
       <span id="compBadge" class="comp-badge" style="display:none;"></span>
       <span class="spacer"></span>
-      <button id="langToggle" type="button">EN</button>
       <button id="themeToggle" type="button">다크 모드</button>
     </div>
     <div class="source-note" id="sourceNote" data-i18n-html="source-note">

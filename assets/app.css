@@ -19,11 +19,11 @@ header h1{font-size:22px; margin:0 0 6px;}
 .meta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:var(--text-secondary); font-size:12px;}
 .meta .spacer{flex:1;}
 .comp-badge{border:1px solid var(--border); border-radius:999px; padding:2px 9px; background:var(--surface-muted); white-space:nowrap;}
-#themeToggle, #langToggle{
+#themeToggle{
   background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
   border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px;
 }
-#themeToggle:hover, #langToggle:hover{color:var(--text);}
+#themeToggle:hover{color:var(--text);}
 .source-note{
   margin:14px 0 22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
   background:var(--surface-muted); color:var(--text-secondary); font-size:12px; line-height:1.55;

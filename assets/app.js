@@ -21,29 +21,12 @@
     (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
   document.documentElement.setAttribute('data-theme', _initialTheme);
 
-  /* ---------- 영문 모드 (F-11): ?lang=en|ko → localStorage → 기본 ko ----------
-     UI 문구만 번역(사전: assets/i18n.js). 종목명·경고문 등 데이터 값은 원문 유지.
-     t()=리터럴 치환, tt()=template {x} 슬롯 치환 — 사전에 없는 키는 한국어 원문 그대로. */
-  const _langParam=_params.get('lang');
-  const _lang=(_langParam==='en'||_langParam==='ko') ? _langParam :
-    (localStorage.getItem('nps-lang')==='en' ? 'en' : 'ko');
-  document.documentElement.lang=_lang;
-  const I18N=(_lang!=='ko' && window.NPS_I18N && window.NPS_I18N[_lang]) || null;
-  const t=s=>(I18N && I18N[s])||s;
+  /* ---------- 한국어 고정 ----------
+     t()=리터럴 반환, tt()=template {x} 슬롯 치환. */
+  document.documentElement.lang='ko';
+  const t=s=>s;
   const tt=(key,vars)=>{ let s=t(key); Object.keys(vars||{}).forEach(k=>{ s=s.split('{'+k+'}').join(vars[k]); }); return s; };
-  const LOC=_lang==='en' ? 'en-US' : 'ko-KR';
-  if(I18N){
-    document.querySelectorAll('[data-i18n]').forEach(el=>{
-      const key=el.getAttribute('data-i18n')||el.textContent.trim();
-      if(I18N[key]) el.textContent=I18N[key];
-    });
-    document.querySelectorAll('[data-i18n-html]').forEach(el=>{   // 사전 통제 HTML(소스 노트) — 사용자 데이터 아님
-      const v=I18N[el.getAttribute('data-i18n-html')];
-      if(v) el.innerHTML=v;
-    });
-    const si=document.getElementById('tableSearch');
-    if(si){ si.placeholder=t('종목명·코드 검색'); si.setAttribute('aria-label', t('보유 종목 검색')); }
-  }
+  const LOC='ko-KR';
 
   /* ---------- ECharts CDN 로더 (SRI) ---------- */
   // SHA-384는 npm 패키지 echarts@5.6.0의 dist/echarts.min.js 원본 바이트 기준
@@ -89,12 +72,6 @@
     /* ---------- 포매터 ---------- */
     function fmtKrwJo(v){
       const av=Math.abs(v);
-      if(_lang==='en'){   // 영문: ₩ + T(1e12)/B(1e9)/M(1e6) — 조/억 단위는 영어권에 생소
-        const u=av>=1e12?[1e12,'T']:av>=1e9?[1e9,'B']:av>=1e6?[1e6,'M']:null;
-        if(!u) return '₩'+Math.round(v).toLocaleString(LOC);
-        const x=v/u[0]; const d=Math.abs(x)>=100?0:Math.abs(x)>=10?1:2;
-        return '₩'+x.toLocaleString(LOC,{maximumFractionDigits:d,minimumFractionDigits:d})+u[1];
-      }
       if(av>=1e12){ const x=v/1e12; const d=av>=1e15?0:av>=1e14?1:av>=1e13?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'조'; }
       if(av>=1e8){ const x=v/1e8; const d=av>=1e11?0:av>=1e10?1:av>=1e9?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'억'; }
       return Math.round(v).toLocaleString('ko-KR')+'원';
@@ -102,12 +79,6 @@
     function fmtSignedKrw(v){ if(v==null) return '-'; return (v>0?'+':'')+fmtKrwJo(v); }
     function fmtKrwAxis(v){
       const av=Math.abs(v||0);
-      if(_lang==='en'){
-        if(av>=1e12) return (v/1e12).toFixed(1)+'T';
-        if(av>=1e9) return (v/1e9).toFixed(0)+'B';
-        if(av>=1e6) return (v/1e6).toFixed(0)+'M';
-        return Math.round(v).toLocaleString(LOC);
-      }
       if(av>=1e12) return (v/1e12).toFixed(1)+'조';
       if(av>=1e8) return (v/1e8).toFixed(0)+'억';
       return Math.round(v).toLocaleString('ko-KR');
@@ -726,7 +697,7 @@
       _newChart(el).setOption({
         grid:{left:62,right:16,top:16,bottom:26},
         xAxis:T.cat(periods, _fundAxisLabel(periods), {boundaryGap:false, axisTick:{show:false}}),
-        yAxis:T.val({color:T.tc,fontSize:10, formatter:v=>_lang==='en'?'₩'+(v/1e12).toFixed(0)+'T':(v/1e12).toFixed(0)+'조'}, {min:0}),
+        yAxis:T.val({color:T.tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, {min:0}),
         tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return esc(fundPeriodLabel(p.axisValue))+'<br/>'+t('기금 전체')+' '+fmtKrwJo(p.value);}},
         series:[{type:'line', data:totals, symbol:'none', smooth:false, lineStyle:{color:primary,width:2}, itemStyle:{color:primary},
           markArea:_fundEstMark(periods),
@@ -856,21 +827,6 @@
         syncToggleLabel(); renderCharts();
       });
       syncToggleLabel();
-    }
-
-    /* ---------- 언어 토글 (F-11) — embed 또는 ?lang 지정 시 숨김(부모가 제어).
-       문구가 정적 번역 패스·차트에 퍼져 있어 토글은 저장 후 새로고침으로 일괄 적용. */
-    const _langBtn=document.getElementById('langToggle');
-    if(_langBtn){
-      if(_embed || _langParam){
-        _langBtn.style.display='none';
-      } else {
-        _langBtn.textContent=_lang==='en'?'한국어':'EN';
-        _langBtn.addEventListener('click',()=>{
-          localStorage.setItem('nps-lang', _lang==='en'?'ko':'en');
-          location.reload();
-        });
-      }
     }
 
     /* ---------- 실행 ---------- */
