@@ -36,7 +36,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_data.outputs.page_url }}
     runs-on: ubuntu-latest
     # 걸린 실행이 concurrency 그룹(pages)을 붙잡아 다음 스케줄까지 막는 사고 방지.
     # 정상 실행은 ~5분(KIS 병렬 시세 + DART 병렬 + 차단 호스트 회로차단기 적용 후).
@@ -160,20 +160,53 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        id: upload
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
 
+      # Pages는 pages_build_version(deploy-pages가 GITHUB_SHA에서 읽음)이 이미 배포된
+      # 버전과 같으면 새 artifact를 서빙에 반영하지 않는다. refresh 실행의 GITHUB_SHA는
+      # 트리거 시점 커밋이라, 코드 push가 같은 SHA를 먼저 배포해 두면 직후의 데이터 갱신
+      # 배포가 조용히 무시된다(2026-07-03 실증). GITHUB_SHA는 예약 변수라 env로 오버라이드도
+      # 불가(실측) → 데이터 커밋을 만든 실행은 Pages 배포 API를 직접 호출해 버전을 새 데이터
+      # 커밋 SHA로 지정한다. 코드 push 배포(SHA가 항상 유니크)는 공식 액션을 그대로 쓴다.
       - name: Deploy
         id: deployment
+        if: steps.commit_data.outputs.sha == ''
         uses: actions/deploy-pages@v4
+
+      - name: Deploy (data commit version)
+        id: deployment_data
+        if: steps.commit_data.outputs.sha != ''
+        uses: actions/github-script@v7
         env:
-          # deploy-pages는 pages_build_version을 GITHUB_SHA에서 읽고, Pages는 같은 버전의
-          # 재배포를 무시한다(이미 배포된 버전이면 새 artifact가 서빙에 반영되지 않음).
-          # refresh 실행의 GITHUB_SHA는 트리거 시점 커밋이라, 코드 push 직후의 첫 데이터
-          # 갱신이 조용히 스테일 서빙되던 원인(2026-07-03 실증). 데이터 커밋을 만들었으면
-          # 그 SHA를 버전으로 주입해 항상 유니크하게 만든다.
-          GITHUB_SHA: ${{ steps.commit_data.outputs.sha || github.sha }}
+          PAGES_BUILD_VERSION: ${{ steps.commit_data.outputs.sha }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact_id }}
+        with:
+          script: |
+            const version = process.env.PAGES_BUILD_VERSION;
+            const oidcToken = await core.getIDToken();
+            const { data: dep } = await github.request('POST /repos/{owner}/{repo}/pages/deployments', {
+              owner: context.repo.owner, repo: context.repo.repo,
+              artifact_id: Number(process.env.ARTIFACT_ID),
+              pages_build_version: version,
+              oidc_token: oidcToken,
+            });
+            core.info(`Pages 배포 생성: version=${version} id=${dep.id}`);
+            core.setOutput('page_url', dep.page_url);
+            const bad = ['deployment_failed', 'deployment_content_failed',
+                         'deployment_attempt_error', 'deployment_cancelled', 'deployment_lost'];
+            for (let i = 0; i < 36; i++) {  // 최대 ~3분 폴링
+              const { data: st } = await github.request('GET /repos/{owner}/{repo}/pages/deployments/{deployment_id}', {
+                owner: context.repo.owner, repo: context.repo.repo, deployment_id: dep.id,
+              });
+              core.info(`배포 상태: ${st.status}`);
+              if (st.status === 'succeed') return;
+              if (bad.includes(st.status)) throw new Error(`Pages 배포 실패: ${st.status}`);
+              await new Promise(r => setTimeout(r, 5000));
+            }
+            throw new Error('Pages 배포 상태 확인 타임아웃');
 
       # 데이터 갱신 경로 실패 시 라벨 batch-failure 이슈 생성(이미 열린 동일 라벨 이슈가 있으면 코멘트만).
       - name: Report batch failure
