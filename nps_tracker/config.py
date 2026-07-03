@@ -47,6 +47,14 @@ KIS_TOKEN_URL = f"{KIS_BASE_URL}/oauth2/tokenP"
 KIS_INVESTOR_TRADE_URL = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
 KIS_PENSION_TRADE_LIMIT = int(os.environ.get("KIS_PENSION_TRADE_LIMIT", "100"))
 KIS_REQUEST_SLEEP_SEC = float(os.environ.get("KIS_REQUEST_SLEEP_SEC", "0.05"))
+# KIS 일자별 시세(inquire-daily-itemchartprice)를 종가 1순위 소스로 사용(pykrx 스크레이핑 대체).
+# 병렬 8워커 + 0.07초 페이싱 ≈ 14 req/s < KIS 한도 20 req/s. 1,000종목 ≈ 75초(pykrx 직렬 ≈ 7분).
+KIS_PRICE_WORKERS = int(os.environ.get("KIS_PRICE_WORKERS", "8"))
+KIS_PRICE_INTERVAL_SEC = float(os.environ.get("KIS_PRICE_INTERVAL_SEC", "0.07"))
+# KIS 응답은 종목당 최근 100행까지만 — 조회 구간이 이보다 길면(캐시 소실 등) pykrx 전체 조회 경로.
+KIS_PRICE_MAX_CAL_DAYS = 120
+# KIS가 정상인데 이만큼 이상의 종목이 전부 빈 응답이면 휴장일로 보고 pykrx/yf 폴백을 생략한다.
+PRICE_HOLIDAY_SKIP_MIN_CODES = 50
 FNGUIDE_URL = "https://comp.fnguide.com/SVO/WooriRenewal/Inst_Data.asp?strInstCD=49530"
 # 기금 전체·부문별 평가액(시가) — 「국민연금공단_기금 포트폴리오 현황」(연말+최신월 스냅샷, 십억원)
 FUND_PORTFOLIO_PAGE_URL = "https://www.data.go.kr/data/15106894/fileData.do"
@@ -76,6 +84,9 @@ DART_CORP_CACHE_MAX_AGE_DAYS = 30
 # 대량보유 보고 대상은 5%↑뿐이므로 연말 지분율 기준 후보를 한정(경계 종목 여유분 포함 ≈290종목).
 DART_CANDIDATE_MIN_OWNERSHIP_PCT = 4.5
 DART_NPS_REPORTER_SUBSTR = "국민연금"  # 보고자(repror) 매칭 부분문자열
+# DART 호출 병렬화 — 8워커 + 0.08초 페이싱 ≈ 12.5 req/s(분당 750 < 한도 1,000). 290종목 ≈ 25초.
+DART_MAX_WORKERS = int(os.environ.get("DART_MAX_WORKERS", "8"))
+DART_REQUEST_INTERVAL_SEC = float(os.environ.get("DART_REQUEST_INTERVAL_SEC", "0.08"))
 
 _USER_AGENT = "Mozilla/5.0"
 _PUBLIC_DATASET_RE = re.compile(r"국민연금공단_국내주식 투자정보_(\d{8})")
@@ -194,6 +205,10 @@ COMPOSITION_MAX_AGE_DAYS = 400   # 보유 구성 기준일(src_date) 경과 경�
 
 # ---------- 발행 계약 v2 ----------
 SCHEMA_VERSION = 2
+# 재사용 산출물(F-14): 보유내역 CSV(data/holdings_latest.csv) + Atom 피드(feed.xml)
+SITE_URL = "https://ducklove.github.io/nps-tracker"
+HOLDINGS_CSV = os.path.join(DATA, "holdings_latest.csv")
+FEED_MAX_ENTRIES = 20  # Atom 피드에 싣는 최근 거래일 수
 # 중기 자산배분 목표비중(%) — index.html에 하드코딩돼 있던 값을 데이터로 이관. 단기자금은 잔여 운용이라 목표 0.
 FUND_TARGETS = {
     "domestic_stock": 20.8, "foreign_stock": 34.7, "domestic_bond": 23.1,

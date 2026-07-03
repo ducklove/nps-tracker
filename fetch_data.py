@@ -9,7 +9,8 @@
   2) seed(data/seed_holdings_latest.json) — 공공데이터가 받아지지 않을 때의 폴백(클라우드 등).
 
 종목코드 매핑: corp_codes(DART 상장사 전체) + stock_meta + aliases, 정확/정규화/prefix 매칭.
-종가: pykrx 단일종목(원주가) → 실패 시 yfinance(.KS/.KQ), 증분 캐시(data/price_cache.json).
+종가: KIS 일자별 시세(공식 API, 병렬) → pykrx 단일종목 → yfinance(.KS/.KQ) 폴백,
+증분 캐시(data/price_cache.json).
 KOSPI: yfinance(^KS11). NAV: 첫 거래일 평가총액을 1000으로 고정(총좌수 고정), 현금흐름 없음.
 발행: data.js(window.NPS_DATA), data.json, current.json, data/nav_history.json.
 

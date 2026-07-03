@@ -9,10 +9,13 @@
 | `https://ducklove.github.io/nps-tracker/data.json` | 대시보드 페이로드(요약·상위 보유·NAV/KOSPI 시계열·섹터·YoY·해외주식) |
 | `https://ducklove.github.io/nps-tracker/current.json` | 전체 보유내역 + 요약 + 자산배분(목록형 소비자용) |
 | `https://ducklove.github.io/nps-tracker/data.js` | `window.NPS_DATA = {...}` 래퍼(구형 임베드·`file://` 열람 호환용) — 신규 소비자는 `data.json` 사용 |
+| `https://ducklove.github.io/nps-tracker/data/holdings_latest.csv` | 전체 보유내역 CSV(utf-8-sig) — 엑셀·구글시트에서 바로 열람 |
+| `https://ducklove.github.io/nps-tracker/feed.xml` | Atom 피드 — 일별 NAV 업데이트 구독(RSS 리더·자동화 트리거용) |
 
 - GitHub Pages는 `access-control-allow-origin: *`을 내려주므로 브라우저 fetch에 CORS 제약이 없다.
 - CDN 캐시 우회: `data.json?t=<timestamp>` 처럼 고유 쿼리를 붙여 요청할 것(본 대시보드도 동일).
-- 갱신 주기: 평일 1회(20:20 KST 스케줄) + 수시 수동 실행.
+- 갱신 주기: 평일 2회 스케줄(16:20 본 실행 + 21:35 보조, KST — GitHub 스케줄 특성상 1~3시간 지연 가능)
+  + 수시 수동 실행. 보조 실행은 데이터 변화가 없으면 커밋을 생략한다.
 
 ## 2. 버전·호환성 정책
 

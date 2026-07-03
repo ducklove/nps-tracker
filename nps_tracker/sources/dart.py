@@ -18,12 +18,15 @@ import json
 import logging
 import os
 import re
+import threading
 import xml.etree.ElementTree as ET
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from typing import Callable
 
 from .. import config
-from ..http import _download
+from ..http import _download, _Pacer
 from ..io_utils import _pi, _read_json, _write_json
 
 logger = logging.getLogger("nps")
@@ -91,6 +94,54 @@ def _latest_nps_shares(items: list[dict]) -> int | None:
     return best[1] if best else None
 
 
+def _fetch_dart_json_many(targets: list[tuple[str, str]], url_for: Callable[[str], str],
+                          abort_label: str, download: Callable | None = None) -> dict[str, dict]:
+    """(종목코드, corp_code) 목록을 병렬 조회해 status=000 응답만 {종목코드: res}로 모은다.
+
+    첫 건은 동기 probe — 키/한도 오류(_ABORT_STATUSES)라면 남은 호출 전부가 무의미하므로
+    한 건으로 판정하고 중단한다(직렬 시절의 '첫 응답에서 중단' 의미 유지). 이후는 병렬이며
+    중단 신호(abort) 이후에 시작되는 작업은 건너뛴다(이미 날아간 요청은 어쩔 수 없음).
+    개별 종목 실패는 결과에서 빠질 뿐 전체를 멈추지 않는다.
+    download는 호출 모듈의 _download를 주입하기 위한 것(테스트 monkeypatch 반영).
+    """
+    pacer = _Pacer(config.DART_REQUEST_INTERVAL_SEC)
+    abort = threading.Event()
+    out: dict[str, dict] = {}
+
+    def one(item: tuple[str, str]) -> tuple[str, dict | None]:
+        code, corp = item
+        if abort.is_set():
+            return code, None
+        pacer.wait()
+        try:
+            fetch = download or _download  # 호출 시점에 모듈 전역을 참조(monkeypatch 반영)
+            raw = fetch(url_for(corp), timeout=20, retries=2)
+            res = json.loads(raw.decode("utf-8"))
+        except Exception:
+            return code, None  # 개별 종목 실패는 건너뜀(해당 종목은 기존 값 유지)
+        status = str(res.get("status"))
+        if status in _ABORT_STATUSES:
+            if not abort.is_set():
+                abort.set()
+                logger.warning("DART status=%s(%s) → %s 수집 중단(이후 종목 생략)",
+                               status, res.get("message"), abort_label)
+            return code, None
+        if status != "000":  # 013=조회 데이터 없음 등 → 해당 종목만 건너뜀
+            return code, None
+        return code, res
+
+    code, res = one(targets[0])
+    if res:
+        out[code] = res
+    rest = targets[1:]
+    if rest and not abort.is_set():
+        with ThreadPoolExecutor(max_workers=min(config.DART_MAX_WORKERS, len(rest))) as ex:
+            for code, res in ex.map(one, rest):
+                if res:
+                    out[code] = res
+    return out
+
+
 def fetch_dart_nps_shares(holdings: list[dict]) -> dict[str, int]:
     """국민연금 대량보유 공시의 최신 보유주식수 {종목코드: shares}. 실패·키 없음 시 빈 dict."""
     key = _dart_key()
@@ -109,29 +160,19 @@ def fetch_dart_nps_shares(holdings: list[dict]) -> dict[str, int]:
     if not corp_map:
         logger.warning("DART corpCode 매핑이 비어 있음 → DART 생략")
         return {}
+    targets = [(h["stock_code"], corp_map[h["stock_code"]]) for h in cands
+               if corp_map.get(h["stock_code"])]
+    unmapped = len(cands) - len(targets)
     out: dict[str, int] = {}
-    unmapped = 0
-    for h in cands:
-        corp = corp_map.get(h["stock_code"])
-        if not corp:
-            unmapped += 1
-            continue
-        try:
-            raw = _download(config.DART_MAJORSTOCK_URL.format(key=key, corp_code=corp),
-                            timeout=20, retries=2)
-            res = json.loads(raw.decode("utf-8"))
-        except Exception:
-            continue  # 개별 종목 실패는 건너뜀(해당 종목은 기존 수량 유지)
-        status = str(res.get("status"))
-        if status in _ABORT_STATUSES:
-            logger.warning("DART status=%s(%s) → DART 수집 중단(이후 종목 생략)",
-                           status, res.get("message"))
-            break
-        if status != "000":  # 013=조회 데이터 없음 등 → 해당 종목만 건너뜀
-            continue
-        qty = _latest_nps_shares(res.get("list") or [])
-        if qty:
-            out[h["stock_code"]] = qty
+    if targets:
+        responses = _fetch_dart_json_many(
+            targets,
+            lambda corp: config.DART_MAJORSTOCK_URL.format(key=key, corp_code=corp),
+            abort_label="DART 대량보유")
+        for code, res in responses.items():
+            qty = _latest_nps_shares(res.get("list") or [])
+            if qty:
+                out[code] = qty
     logger.info("DART 대량보유: 후보 %d종목 중 %d종목 수량 확보(매핑 없음 %d)",
                 len(cands), len(out), unmapped)
     return out

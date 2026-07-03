@@ -152,3 +152,27 @@ def test_composition_parser():
     assert _composition("seed(2024-12-31)") == {"date": "2024-12-31", "source": "seed"}
     assert _composition("data.go.kr(2025-12-31)") == {"date": "2025-12-31", "source": "data.go.kr"}
     assert _composition("이상한값") == {"date": None, "source": "이상한값"}
+
+
+# ---------- 재사용 산출물(F-14): holdings CSV + Atom 피드 ----------
+def test_holdings_csv_written(published):
+    tmp_repo, _, _, _, _ = published
+    text = (tmp_repo / "data" / "holdings_latest.csv").read_text(encoding="utf-8-sig")
+    lines = text.strip().splitlines()
+    assert lines[0].split(",")[:3] == ["종목코드", "종목명", "추정수량"]
+    assert len(lines) == 1 + 2  # 헤더 + 전체 2종목(TOP_N 절단 없음)
+    first = lines[1].split(",")
+    assert first[0] == "005930" and first[1] == "삼성전자"  # 평가액 내림차순
+    assert first[9] == "2026-06-09"  # 기준일
+
+
+def test_atom_feed_written(published):
+    tmp_repo, _, _, _, _ = published
+    feed = (tmp_repo / "feed.xml").read_text(encoding="utf-8")
+    assert feed.startswith('<?xml version="1.0"')
+    assert feed.count("<entry>") == len(HIST)
+    # 최신 거래일이 첫 entry(역순 정렬), NAV는 소수 2자리 + 전일 대비 %
+    first_entry = feed.split("<entry>")[1]
+    assert "nav-2026-06-09" in first_entry
+    assert "NAV 1033.33" in first_entry and "+1.29%" in first_entry
+    assert "<updated>2026-06-09T16:00:00+09:00</updated>" in first_entry

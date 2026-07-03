@@ -15,9 +15,12 @@ on:
         default: true
         type: boolean
   schedule:
-    # 평일 20:20 KST (11:20 UTC) — 장마감 후 종가 확정 시각에 일 1회 갱신.
-    # 분을 정시(:00~:10)에서 띄움: GitHub 스케줄은 정시 근처 부하로 지연·드롭이 잦음(공식 권고).
-    - cron: "20 11 * * 1-5"
+    # 평일 16:20 KST (07:20 UTC) — 장마감(15:30) 직후 본 실행. 실측상 스케줄은 1~3시간
+    # 지연되므로 실제 시작은 대략 17~19시 KST. 분을 정시(:00~:10)에서 띄움(공식 권고).
+    - cron: "20 7 * * 1-5"
+    # 평일 21:35 KST (12:35 UTC) — 보조 실행. 본 실행이 드롭/실패해도 당일 안에 만회한다.
+    # 데이터 변화가 없으면 커밋을 생략하므로 중복 실행 비용은 배포뿐이다.
+    - cron: "35 12 * * 1-5"
 
 permissions:
   contents: write
@@ -35,6 +38,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    # 걸린 실행이 concurrency 그룹(pages)을 붙잡아 다음 스케줄까지 막는 사고 방지.
+    # 정상 실행은 ~5분(KIS 병렬 시세 + DART 병렬 + 차단 호스트 회로차단기 적용 후).
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,6 +76,7 @@ jobs:
 
       - name: Refresh NPS data
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh_data)
+        timeout-minutes: 18
         env:
           # secret 또는 variable 어디에 등록했든 동작(미등록 시 빈 값 → 해당 소스만 생략)
           KOSIS_API_KEY: ${{ secrets.KOSIS_API_KEY || vars.KOSIS_API_KEY }}
@@ -92,6 +99,7 @@ jobs:
             data/seed_fund_portfolio.json data/seed_holdings_latest.json data/archive
           git add --ignore-errors data/seed_foreign_holdings.json || true  # 해외주식 seed(없을 수 있음)
           git add --ignore-errors assets/og-image.png || true              # OG 공유 카드(일배치 갱신)
+          git add --ignore-errors data/holdings_latest.csv feed.xml || true  # 재사용 산출물(F-14)
           if git diff --cached --quiet; then
             echo "No data changes to commit."
             exit 0

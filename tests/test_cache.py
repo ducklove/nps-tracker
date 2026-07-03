@@ -191,3 +191,79 @@ def test_kospi_cache_full_when_empty(tmp_repo, monkeypatch):
     out = market.get_kospi_cached("2026-01-01", "2026-01-02")
     assert calls == [("2026-01-01", "2026-01-02")]
     assert _read_cache()["_KOSPI"] == out
+
+
+# ---------- KIS 시세 1순위 경로 (pykrx는 폴백) ----------
+def test_kis_primary_path_skips_pykrx(tmp_repo, monkeypatch):
+    kis_calls = []
+
+    def fake_kis(codes, since, until):
+        kis_calls.append((tuple(codes), since, until))
+        return True, {c: _rows(("2026-01-02", 10.0)) for c in codes}
+
+    monkeypatch.setattr(market, "fetch_prices_kis", fake_kis)
+    rec = Recorder({})
+    monkeypatch.setattr(market, "fetch_prices_pykrx", rec)
+    monkeypatch.setattr(market, "fetch_prices_yf", lambda *a: {})
+
+    out = market.get_prices_cached(["A"], "2026-01-01", "2026-01-02")
+
+    assert kis_calls == [(("A",), "2026-01-01", "2026-01-02")]
+    assert rec.calls == []  # KIS가 전부 수신 → pykrx 미호출
+    assert out["A"] == _rows(("2026-01-02", 10.0))
+    assert _read_cache()["A"] == out["A"]
+
+
+def test_kis_missing_codes_fall_back_to_pykrx(tmp_repo, monkeypatch):
+    monkeypatch.setattr(market, "fetch_prices_kis",
+                        lambda codes, s, u: (True, {"A": _rows(("2026-01-02", 10.0))}))
+    rec = Recorder({"B": _rows(("2026-01-02", 20.0))})
+    monkeypatch.setattr(market, "fetch_prices_pykrx", rec)
+    monkeypatch.setattr(market, "fetch_prices_yf", lambda *a: {})
+
+    out = market.get_prices_cached(["A", "B"], "2026-01-01", "2026-01-02")
+
+    assert rec.calls == [(("B",), "2026-01-01", "2026-01-02")]  # 미수신 종목만 pykrx
+    assert out["A"] == _rows(("2026-01-02", 10.0))
+    assert out["B"] == _rows(("2026-01-02", 20.0))
+
+
+def test_kis_unavailable_falls_back_to_full_pykrx(tmp_repo, monkeypatch):
+    monkeypatch.setattr(market, "fetch_prices_kis", lambda *a: (False, {}))
+    rec = Recorder({"A": _rows(("2026-01-02", 10.0))})
+    monkeypatch.setattr(market, "fetch_prices_pykrx", rec)
+    monkeypatch.setattr(market, "fetch_prices_yf", lambda *a: {})
+
+    out = market.get_prices_cached(["A"], "2026-01-01", "2026-01-02")
+    assert rec.calls == [(("A",), "2026-01-01", "2026-01-02")]  # 기존 경로 그대로
+    assert out["A"] == _rows(("2026-01-02", 10.0))
+
+
+def test_kis_holiday_empty_skips_per_code_fallback(tmp_repo, monkeypatch):
+    """KIS 정상 + 대량 종목 전부 빈 응답 = 휴장 구간 → 종목별 pykrx/yf 재확인 생략."""
+    codes = [f"C{i:03d}" for i in range(config.PRICE_HOLIDAY_SKIP_MIN_CODES)]
+    monkeypatch.setattr(market, "fetch_prices_kis", lambda *a: (True, {}))
+    rec = Recorder({})
+    monkeypatch.setattr(market, "fetch_prices_pykrx", rec)
+    yf_calls = []
+    monkeypatch.setattr(market, "fetch_prices_yf", lambda *a: yf_calls.append(a) or {})
+
+    out = market.get_prices_cached(codes, "2026-01-01", "2026-01-01")
+
+    assert rec.calls == [] and yf_calls == []
+    assert out == {}
+
+
+def test_kis_skipped_for_long_span(tmp_repo, monkeypatch):
+    """조회 구간이 KIS 100행 한도를 넘으면(예: 캐시 소실 후 전체 재조회) pykrx 경로."""
+    kis_calls = []
+    monkeypatch.setattr(market, "fetch_prices_kis",
+                        lambda *a: kis_calls.append(a) or (True, {}))
+    rec = Recorder({"A": _rows(("2026-01-02", 10.0))})
+    monkeypatch.setattr(market, "fetch_prices_pykrx", rec)
+    monkeypatch.setattr(market, "fetch_prices_yf", lambda *a: {})
+
+    market.get_prices_cached(["A"], "2025-01-01", "2026-01-02")  # 366일 > KIS_PRICE_MAX_CAL_DAYS
+
+    assert kis_calls == []
+    assert rec.calls == [(("A",), "2025-01-01", "2026-01-02")]

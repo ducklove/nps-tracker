@@ -1,4 +1,5 @@
-"""시장 가격 수집 — pykrx 단일종목(원주가) → yfinance 폴백, KOSPI(^KS11) + 가격 증분 캐시.
+"""시장 가격 수집 — KIS 일자별 시세(공식 API, 병렬) → pykrx 단일종목 → yfinance 폴백,
+KOSPI(^KS11) + 가격 증분 캐시.
 
 캐시(data/price_cache.json) 형식:
   {"<종목코드>": [{"date": "YYYY-MM-DD", "close": float}, ...],
@@ -7,11 +8,15 @@
 
 캐시에 있는 과거 날짜는 재조회·덮어쓰기하지 않는다(발행 이력 재현성 확보가 목적).
 yfinance 데이터 재작성(기업행위 소급 등)에 대응할 때는 --refresh-prices로 전체 재조회한다.
+
+일 배치의 증분 구간(보통 1~3일)은 KIS 병렬 조회로 ~75초에 끝난다(pykrx 직렬 ≈ 7분).
+KIS 자격증명이 없거나 구간이 100행 한도를 넘으면 기존 pykrx 경로를 그대로 쓴다.
 """
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
 from .. import config
@@ -21,6 +26,19 @@ logger = logging.getLogger("nps")
 
 KOSPI_CACHE_KEY = "_KOSPI"
 META_CACHE_KEY = "_meta"
+
+
+def fetch_prices_kis(codes: list[str], since: str, until: str) -> tuple[bool, dict[str, list[dict]]]:
+    """KIS 일자별 시세(공식 API, 병렬) — (사용 가능 여부, {종목코드: rows}).
+
+    자격증명 없음·토큰 실패·예외 시 (False, {}) → 호출부가 pykrx로 폴백한다.
+    """
+    try:
+        from .kis import fetch_daily_closes
+        return fetch_daily_closes(codes, since, until)
+    except Exception as exc:
+        logger.warning("KIS 시세 경로 오류(pykrx 폴백): %s", exc)
+        return False, {}
 
 
 def fetch_prices_pykrx(codes: list[str], since: str, until: str) -> dict[str, list[dict]]:
@@ -51,14 +69,14 @@ def fetch_prices_pykrx(codes: list[str], since: str, until: str) -> dict[str, li
 
 
 def fetch_prices_yf(codes: list[str], since: str, until: str) -> dict[str, list[dict]]:
-    """yfinance 폴백. 한국 종목은 .KS(코스피)/.KQ(코스닥) 접미사를 차례로 시도."""
+    """yfinance 폴백(병렬). 한국 종목은 .KS(코스피)/.KQ(코스닥) 접미사를 차례로 시도."""
     try:
         import yfinance as yf
     except Exception:
         return {}
-    out: dict[str, list[dict]] = {}
     end = (date.fromisoformat(until) + timedelta(days=1)).isoformat()
-    for code in codes:
+
+    def one(code: str) -> tuple[str, list[dict] | None]:
         for suffix in (".KS", ".KQ"):
             try:
                 h = yf.Ticker(code + suffix).history(start=since, end=end, auto_adjust=False)
@@ -69,10 +87,16 @@ def fetch_prices_yf(codes: list[str], since: str, until: str) -> dict[str, list[
                         if c == c and c > 0
                     ]
                     if rows:
-                        out[code] = rows
-                        break
+                        return code, rows
             except Exception:
                 pass
+        return code, None
+
+    out: dict[str, list[dict]] = {}
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(codes)))) as ex:
+        for code, rows in ex.map(one, codes):
+            if rows:
+                out[code] = rows
     return out
 
 
@@ -180,11 +204,27 @@ def get_prices_cached(codes: list[str], since: str, until: str,
         logger.info("가격 캐시 적중 %d/%d종목 (신규 조회 %d종목)", len(codes) - n_fetch, len(codes), n_fetch)
     fetched: dict[str, list[dict]] = {}
     for fsince, group in sorted(groups.items()):
-        got = fetch_prices_pykrx(group, fsince, until)
+        got: dict[str, list[dict]] = {}
+        kis_ok = False
+        span_days = (date.fromisoformat(until) - date.fromisoformat(fsince)).days
+        if span_days <= config.KIS_PRICE_MAX_CAL_DAYS:  # KIS는 종목당 최근 100행 한도
+            kis_ok, got = fetch_prices_kis(group, fsince, until)
+            if kis_ok and not got and len(group) >= config.PRICE_HOLIDAY_SKIP_MIN_CODES:
+                # API는 정상인데 대량 종목이 전부 빈 응답 = 조회 구간이 통째로 휴장.
+                # 종목별 pykrx/yf 재확인(수십 분)을 생략한다.
+                logger.info("KIS 시세 %d종목 전부 빈 응답(%s~%s) — 휴장 구간으로 보고 폴백 생략",
+                            len(group), fsince, until)
+                continue
         missing = [c for c in group if c not in got]
         if missing:
-            logger.info("pykrx 미수신 %d종목 → yfinance 폴백", len(missing))
-            got.update(fetch_prices_yf(missing, fsince, until))
+            if kis_ok:
+                logger.info("KIS 미수신 %d종목 → pykrx 폴백", len(missing))
+            pk = fetch_prices_pykrx(missing, fsince, until)
+            got.update(pk)
+            missing = [c for c in missing if c not in pk]
+            if missing:
+                logger.info("pykrx 미수신 %d종목 → yfinance 폴백", len(missing))
+                got.update(fetch_prices_yf(missing, fsince, until))
         fetched.update(got)
     out: dict[str, list[dict]] = {}
     for code in codes:

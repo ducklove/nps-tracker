@@ -15,7 +15,6 @@ DART corpCode와 같은 패턴). 업종 구성은 거의 변하지 않으므로 
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import date, timedelta
@@ -23,7 +22,7 @@ from datetime import date, timedelta
 from .. import config
 from ..http import _download
 from ..io_utils import _read_json, _write_json, _yyyymmdd
-from .dart import _ABORT_STATUSES, _dart_key, load_dart_corp_map
+from .dart import _dart_key, _fetch_dart_json_many, load_dart_corp_map
 
 logger = logging.getLogger("nps")
 
@@ -94,6 +93,7 @@ def _fetch_dart_sector_map(codes_by_value: list[str]) -> dict[str, str]:
     """DART 기업개황 induty_code → KSIC 중분류명. 키 없음·실패 시 빈 dict.
 
     호출량을 평가액 상위 SECTOR_DART_MAX 종목으로 제한한다(가치 커버리지 98%+).
+    캐시 만료(30일) 시에만 실행되며, 대량보유와 같은 병렬 헬퍼로 400종목 ≈ 35초.
     """
     key = _dart_key()
     if not key or not codes_by_value:
@@ -103,30 +103,23 @@ def _fetch_dart_sector_map(codes_by_value: list[str]) -> dict[str, str]:
     except Exception as exc:
         logger.warning("DART corpCode 매핑 실패(섹터 생략): %s", exc)
         return {}
-    out: dict[str, str] = {}
-    targets = codes_by_value[:config.SECTOR_DART_MAX]
-    for i, code in enumerate(targets):
+    targets = []
+    for code in codes_by_value[:config.SECTOR_DART_MAX]:
         corp = corp_map.get(code) or (corp_map.get(code[:5] + "0") if len(code) == 6 else None)
-        if not corp:
-            continue
-        try:
-            raw = _download(config.DART_COMPANY_URL.format(key=key, corp_code=corp),
-                            timeout=20, retries=2)
-            res = json.loads(raw.decode("utf-8"))
-        except Exception:
-            continue
-        status = str(res.get("status"))
-        if status in _ABORT_STATUSES:
-            logger.warning("DART status=%s(%s) → 섹터 수집 중단", status, res.get("message"))
-            break
-        if status != "000":
-            continue
+        if corp:
+            targets.append((code, corp))
+    if not targets:
+        return {}
+    responses = _fetch_dart_json_many(
+        targets,
+        lambda corp: config.DART_COMPANY_URL.format(key=key, corp_code=corp),
+        abort_label="섹터(기업개황)", download=_download)
+    out: dict[str, str] = {}
+    for code, res in responses.items():
         div = re.sub(r"\D", "", str(res.get("induty_code") or ""))[:2]
         name = config.KSIC_DIVISIONS.get(div)
         if name:
             out[code] = name
-        if (i + 1) % 100 == 0:
-            logger.info("DART 기업개황 진행 %d/%d", i + 1, len(targets))
     return out
 
 

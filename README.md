@@ -13,7 +13,9 @@
 - **5%↑ 공시 수량**: DART OpenAPI 「대량보유 상황보고」(`DART_API_KEY` 필요) > FnGuide 폴백.
   공시 당일 최신 보유주식수가 연말 추정수량 위에 덮인다. 키가 없으면 해당 소스만 생략.
 - **종목코드 매핑**: `data/corp_codes.json`(DART 상장사 전체) + 내장 별칭, 정확/정규화/prefix 매칭.
-- **종가**: KRX(pykrx, 원주가) · 폴백 yfinance(`.KS`/`.KQ`), 증분 캐시(`data/price_cache.json`, 미커밋)
+- **종가**: KIS 일자별 시세(공식 API, 병렬 ~14 req/s, `KIS_APP_KEY`/`KIS_APP_SECRET`) →
+  폴백 KRX(pykrx 단일종목) → yfinance(`.KS`/`.KQ`), 증분 캐시(`data/price_cache.json`, 미커밋).
+  KIS 응답은 종목당 최근 100행까지라 캐시 소실 등 긴 구간 재조회는 pykrx 경로를 쓴다.
 - **KOSPI**: yfinance(`^KS11`)
 - **업종분류**: KRX 업종분류현황(pykrx, `KRX_ID`/`KRX_PW` 데이터포털 계정 필요) → KIND
   상장법인목록(익명, 클라우드 IP 차단 가능) → DART 기업개황 KSIC 중분류(`DART_API_KEY`,
@@ -38,7 +40,8 @@
 | `data/seed_*.json` · `data/stock_meta.json` | 폴백 seed · 종목코드↔종목명 매핑 |
 | `data/archive/holdings_*.json` | 연말 보유구성 원본 보존(불변) — 2개 이상부터 YoY 비교가 발행물에 실림 |
 | `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e) — 네트워크 호출 없음 |
-| `.github/workflows/` | `pages.yml` 일 1회 갱신·배포(+가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
+| `data/holdings_latest.csv` · `feed.xml` | 재사용 산출물(자동 생성) — 엑셀·시트용 CSV, 일별 NAV Atom 피드 |
+| `.github/workflows/` | `pages.yml` 평일 2회 갱신·배포(16:20 본 + 21:35 보조 KST, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
 
 ## NAV 모델
 첫 스냅샷의 평가총액을 NAV 1000으로 고정한다(총좌수 = 첫 평가총액 / 1000). 이후 현금흐름 없이

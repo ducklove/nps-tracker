@@ -30,7 +30,10 @@ DATA_PATHS = [
     "data/nav_history.json", "data/seed_fund_portfolio.json",
     "data/seed_holdings_latest.json", "data/archive",
 ]
-OPTIONAL_PATHS = ["data/seed_foreign_holdings.json", "assets/og-image.png"]  # 없을 수 있음
+OPTIONAL_PATHS = [  # 없을 수 있음
+    "data/seed_foreign_holdings.json", "assets/og-image.png",
+    "data/holdings_latest.csv", "feed.xml",  # 재사용 산출물(F-14)
+]
 
 PUSH_RETRIES = 3
 

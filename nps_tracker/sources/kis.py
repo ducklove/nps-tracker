@@ -10,15 +10,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Iterable
 
 from .. import config
+from ..http import _Pacer
 from ..io_utils import _read_json, _write_json, _yyyymmdd
 
 logger = logging.getLogger("nps")
 
 TR_ID_INVESTOR_TRADE_BY_STOCK_DAILY = "FHPTJ04160001"
 TR_ID_INVESTOR_DAILY_BY_MARKET = "FHPTJ04040000"
+TR_ID_DAILY_ITEMCHARTPRICE = "FHKST03010100"
 PBMN_TO_KRW = 1_000_000
 _DOTENV_CACHE: dict[str, str] | None = None
 _ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -145,6 +148,10 @@ def _kis_investor_daily_by_market_url() -> str:
     return f"{_kis_base_url()}/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market"
 
 
+def _kis_daily_itemchartprice_url() -> str:
+    return f"{_kis_base_url()}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
+
+
 def _num(v) -> int:
     if v is None:
         return 0
@@ -239,6 +246,95 @@ def get_access_token(app_key: str, app_secret: str) -> str:
         "expires_at": time.time() + max(60, expires_in - 120),
     })
     return str(token)
+
+
+def _parse_daily_close_rows(payload: dict) -> list[dict]:
+    """inquire-daily-itemchartprice output2 → [{"date", "close"}] (날짜 오름차순, 0/결측 제외)."""
+    rows = []
+    for r in payload.get("output2") or []:
+        if not r:
+            continue  # 휴장 구간은 빈 dict 행으로 온다
+        d = _iso_date(r.get("stck_bsop_date"))
+        close = _float(r.get("stck_clpr"))
+        if d and close and close > 0:
+            rows.append({"date": d, "close": close})
+    rows.sort(key=lambda r: r["date"])
+    return rows
+
+
+def fetch_daily_closes(codes: list[str], since: str, until: str, *,
+                       fetcher: Callable[[str, str, str], list[dict]] | None = None,
+                       ) -> tuple[bool, dict[str, list[dict]]]:
+    """KIS 일자별 시세로 여러 종목 종가를 병렬 조회 — (API 사용 가능 여부, {종목코드: rows}).
+
+    공식 API라 pykrx(KRX 화면 스크레이핑)보다 빠르고(병렬 ~14 req/s) 차단 위험이 없다.
+    첫 종목을 동기 probe로 호출해 자격증명·토큰 문제면 (False, {})를 반환(→ pykrx 폴백).
+    이후 병렬 조회에서 개별 실패 종목은 결과에서 빠져 폴백 대상이 된다.
+    수정주가(FID_ORG_ADJ_PRC=0) 기준 — pykrx get_market_ohlcv(adjusted=True 기본)과 동일.
+    KIS 응답은 종목당 최근 100행까지만이므로 긴 구간은 호출부에서 pykrx 경로를 써야 한다.
+    """
+    if not codes:
+        return False, {}
+    if fetcher is None:
+        app_key, app_secret = _credentials()
+        if not app_key or not app_secret:
+            logger.info("KIS 자격증명 없음 → KIS 시세 생략(pykrx 사용)")
+            return False, {}
+        try:
+            token = get_access_token(app_key, app_secret)
+        except Exception as exc:
+            logger.warning("KIS 토큰 발급 실패 → pykrx 폴백: %s", exc)
+            return False, {}
+        headers = {
+            "content-type": "application/json; charset=utf-8",
+            "authorization": f"Bearer {token}",
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": TR_ID_DAILY_ITEMCHARTPRICE,
+            "custtype": "P",
+        }
+        url = _kis_daily_itemchartprice_url()
+
+        def fetcher(code: str, s: str, u: str) -> list[dict]:
+            payload = _request_json("GET", url, headers=headers, query={
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": code,
+                "FID_INPUT_DATE_1": _yyyymmdd(s),
+                "FID_INPUT_DATE_2": _yyyymmdd(u),
+                "FID_PERIOD_DIV_CODE": "D",
+                "FID_ORG_ADJ_PRC": "0",
+            })
+            if payload.get("rt_cd") not in (None, "0", 0):
+                raise RuntimeError(payload.get("msg1") or payload.get("msg_cd") or "KIS error")
+            return _parse_daily_close_rows(payload)
+
+    pacer = _Pacer(config.KIS_PRICE_INTERVAL_SEC)
+    out: dict[str, list[dict]] = {}
+
+    # probe: 토큰/권한 문제라면 전 종목이 같은 이유로 실패하므로 1건으로 판정하고 즉시 물러난다.
+    pacer.wait()
+    try:
+        rows = fetcher(codes[0], since, until)
+        if rows:
+            out[codes[0]] = rows
+    except Exception as exc:
+        logger.warning("KIS 시세 probe 실패(%s) → pykrx 폴백: %s", codes[0], exc)
+        return False, {}
+
+    rest = codes[1:]
+    if rest:
+        def one(code: str):
+            pacer.wait()
+            try:
+                return code, fetcher(code, since, until)
+            except Exception:
+                return code, None  # 개별 실패는 폴백 대상으로 남긴다
+
+        with ThreadPoolExecutor(max_workers=min(config.KIS_PRICE_WORKERS, len(rest))) as ex:
+            for code, rows in ex.map(one, rest):
+                if rows:
+                    out[code] = rows
+    return True, out
 
 
 def fetch_investor_trade_by_stock_daily(symbol: str, base_date: str) -> dict:

@@ -213,3 +213,60 @@ def test_kis_base_url_can_come_from_dotenv(monkeypatch, tmp_path):
     monkeypatch.setattr(kis, "_DOTENV_CACHE", None)
 
     assert kis._kis_base_url() == "https://example.test:9443"
+
+
+# ---------- fetch_daily_closes (KIS 일자별 시세, 종가 1순위 소스) ----------
+def test_parse_daily_close_rows_filters_and_sorts():
+    payload = {"output2": [
+        {},  # 휴장 구간의 빈 행
+        {"stck_bsop_date": "20260702", "stck_clpr": "286000"},
+        {"stck_bsop_date": "20260701", "stck_clpr": "314500"},
+        {"stck_bsop_date": "20260630", "stck_clpr": "0"},      # 0원은 제외
+        {"stck_bsop_date": None, "stck_clpr": "100"},           # 날짜 없음 제외
+    ]}
+    assert kis._parse_daily_close_rows(payload) == [
+        {"date": "2026-07-01", "close": 314500.0},
+        {"date": "2026-07-02", "close": 286000.0},
+    ]
+
+
+def test_fetch_daily_closes_collects_parallel_and_skips_individual_failures(monkeypatch):
+    monkeypatch.setattr(kis.config, "KIS_PRICE_INTERVAL_SEC", 0.0)
+    calls = []
+
+    def fetcher(code, since, until):
+        calls.append((code, since, until))
+        if code == "BAD":
+            raise RuntimeError("개별 실패")
+        return [{"date": "2026-07-02", "close": 100.0}]
+
+    ok, out = kis.fetch_daily_closes(["A", "BAD", "B"], "2026-07-01", "2026-07-02", fetcher=fetcher)
+    assert ok is True
+    assert set(out) == {"A", "B"}
+    assert sorted(c[0] for c in calls) == ["A", "B", "BAD"]
+    assert all(c[1:] == ("2026-07-01", "2026-07-02") for c in calls)
+
+
+def test_fetch_daily_closes_probe_failure_aborts_without_more_calls(monkeypatch):
+    monkeypatch.setattr(kis.config, "KIS_PRICE_INTERVAL_SEC", 0.0)
+    calls = []
+
+    def fetcher(code, since, until):
+        calls.append(code)
+        raise RuntimeError("토큰 만료")
+
+    ok, out = kis.fetch_daily_closes(["A", "B", "C"], "2026-07-01", "2026-07-02", fetcher=fetcher)
+    assert (ok, out) == (False, {})
+    assert calls == ["A"]  # probe 한 건으로 판정, 나머지는 호출 안 함
+
+
+def test_fetch_daily_closes_healthy_but_empty_is_ok_true(monkeypatch):
+    """휴장 구간: API는 정상(True)이되 결과만 비어 있음 — 호출부의 휴장 판단 근거."""
+    monkeypatch.setattr(kis.config, "KIS_PRICE_INTERVAL_SEC", 0.0)
+    ok, out = kis.fetch_daily_closes(["A", "B"], "2026-07-04", "2026-07-05",
+                                     fetcher=lambda *a: [])
+    assert (ok, out) == (True, {})
+
+
+def test_fetch_daily_closes_empty_codes():
+    assert kis.fetch_daily_closes([], "2026-07-01", "2026-07-02") == (False, {})

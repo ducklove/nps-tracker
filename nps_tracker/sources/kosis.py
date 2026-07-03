@@ -24,7 +24,8 @@ def fetch_kosis_fund_monthly() -> list[dict] | None:
     if not key:
         logger.info("KOSIS_API_KEY 없음 → KOSIS 월별 생략")
         return None
-    raw = _download(config.KOSIS_FUND_URL.format(key=key), timeout=40)
+    # 정상 응답은 수 초 내 — 차단 환경(클라우드)에서 타임아웃 대기를 줄이려 15초로 제한.
+    raw = _download(config.KOSIS_FUND_URL.format(key=key), timeout=15)
     arr = json.loads(raw.decode("utf-8"))
     if not isinstance(arr, list) or not arr:
         return None

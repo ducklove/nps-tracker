@@ -17,6 +17,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <!-- F-13 PWA — 매니페스트(홈 화면 추가). 데이터 신선도 우선이라 service worker(오프라인 캐시)는 미사용 -->
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="alternate" type="application/atom+xml" title="국민연금 NAV 업데이트 피드" href="feed.xml">
 <meta name="theme-color" content="#2563eb">
 <link rel="icon" type="image/png" href="assets/icon-192.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -178,6 +179,13 @@
       </table>
     </div>
   </section>
+
+  <footer class="pf-footer" style="margin:24px 0 8px;text-align:center;font-size:12px;opacity:.75;">
+    데이터 내려받기:
+    <a href="data/holdings_latest.csv" download>보유내역 CSV</a> ·
+    <a href="data.json" target="_blank" rel="noopener">data.json</a> ·
+    <a href="feed.xml" target="_blank" rel="noopener">Atom 피드</a>
+  </footer>
 </div>
 </body>
 </html>
