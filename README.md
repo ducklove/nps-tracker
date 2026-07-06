@@ -44,7 +44,7 @@
 | `data/archive/holdings_*.json` | 연말 보유구성 원본 보존(불변) — 2개 이상부터 YoY 비교가 발행물에 실림 |
 | `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e) — 네트워크 호출 없음 |
 | `data/holdings_latest.csv` · `feed.xml` | 재사용 산출물(자동 생성) — 엑셀·시트용 CSV, 일별 NAV Atom 피드 |
-| `.github/workflows/` | `pages.yml` 평일 2회 갱신·배포(16:20 본 + 21:35 보조 KST, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
+| `.github/workflows/` | `pages.yml` 평일 2회 갱신·배포(16:22 본 + 21:37 보조 KST, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
 
 ## NAV 모델
 첫 스냅샷의 평가총액을 NAV 1000으로 고정한다(총좌수 = 첫 평가총액 / 1000). 이후 현금흐름 없이
