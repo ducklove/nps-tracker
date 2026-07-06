@@ -11,8 +11,10 @@ import csv
 import json
 import os
 import re
-from datetime import datetime
 from xml.sax.saxutils import escape
+
+from fin_commons.jsonio import atomic_write_text
+from fin_commons.timeutil import kst_stamp
 
 from . import config
 from .fund import _latest_allocation
@@ -134,7 +136,8 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         fp_out["targets"] = dict(config.FUND_TARGETS)  # 중기 자산배분 목표 — index.html 하드코딩을 데이터로 이관
         fp_out["targetsNote"] = config.FUND_TARGETS_NOTE
     nps_data = {
-        "lastUpdated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        # UTC 러너에서도 KST로 표기 (naive now()는 화면의 '갱신' 시각이 9시간 과거로 보이는 버그)
+        "lastUpdated": kst_stamp("%Y-%m-%d %H:%M"),
         "asOf": snap_date,
         "source": source,
         "summary": summary,
@@ -160,11 +163,9 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
     }
 
     payload = json.dumps(nps_data, ensure_ascii=False)
-    with open(os.path.join(config.ROOT, "data.js"), "w", encoding="utf-8") as f:
-        f.write("window.NPS_DATA = " + payload + ";\n")
+    atomic_write_text(os.path.join(config.ROOT, "data.js"), "window.NPS_DATA = " + payload + ";\n")
     # data.json = data.js와 동일 객체의 순수 JSON(신규 소비자용; data.js는 file://·구형 임베드 호환용 유지)
-    with open(os.path.join(config.ROOT, "data.json"), "w", encoding="utf-8") as f:
-        f.write(payload)
+    atomic_write_text(os.path.join(config.ROOT, "data.json"), payload)
     # current.json은 전체 보유내역(지연 로딩 + 허브 인사이트용)
     _write_json(os.path.join(config.ROOT, "current.json"), {
         "lastUpdated": nps_data["lastUpdated"],

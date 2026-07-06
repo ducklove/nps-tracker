@@ -3,3 +3,5 @@ yfinance==1.4.1
 beautifulsoup4==4.15.0
 pandas==2.3.3
 pillow==12.2.0
+# 공통 유틸리티 (원자적 쓰기/KST) — 반드시 버전 태그로 고정
+fin-commons @ git+https://github.com/ducklove/fin-commons.git@v0.2.0

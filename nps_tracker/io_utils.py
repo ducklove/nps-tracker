@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+
+from fin_commons.jsonio import atomic_write_text
 
 logger = logging.getLogger("nps")
 
@@ -20,9 +21,8 @@ def _read_json(path, default=None):
 
 
 def _write_json(path, obj):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False)
+    # 직렬화 형식은 기존 그대로(json.dump 기본 구분자), 쓰기만 원자적으로 (fin-commons)
+    atomic_write_text(path, json.dumps(obj, ensure_ascii=False))
 
 
 def _yyyymmdd(iso: str) -> str:
