@@ -37,8 +37,12 @@ summary { totalValue, nav, count, todayPct, mtdPct, ytdPct, asOf }
 
 `data.json` 추가: `holdings`(상위 100) · `holdingsTotal` · `navHistory[{date,nav}]` ·
 `kospiHistory[{date,value}]` · `treemap` · `fundPortfolio(+targets)` ·
-`sectors[]` · `yoy|null` · `foreign|null`
-`current.json` 추가: `holdings`(전체) · `allocation` · `sectors[]`
+`sectors[]` · `yoy|null` · `foreign|null` · `peerFunds|null`
+`current.json` 추가: `holdings`(전체) · `allocation` · `sectors[]` · `peerFunds|null`
+
+`peerFunds`(F-15, optional): 연기금·공제회 비교 —
+`{updated, note, funds[{key,name,kind,asOf,total(원),returnPct|null,returnYear,allocation{stock,bond,altEtc}|null,basis,source}]}`.
+타 기관은 수동 갱신 seed(연 2~4회), 국민연금 항목은 발행 시 본 대시보드 최신 시계열로 대체된다.
 
 보유 항목(holding) 필드: `stock_code, stock_name, shares, ownership_pct, price,
 market_value, change_pct, weight, sector|null`

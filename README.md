@@ -23,6 +23,9 @@
 - **해외주식**: 「국민연금공단 해외주식 투자정보」(연 1회, 10억원↑) — 티커가 없어 일별
   재평가 없이 정적 스냅샷 탭으로만 노출. 클라우드 차단 시 `data/seed_foreign_holdings.json` 폴백
 - **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > data.go.kr > KOSIS > seed + 최근월 추정
+- **연기금·공제회 비교(F-15)**: 공무원·사학연금, 교직원·행정·군인공제회의 규모·자산배분·수익률을
+  `data/seed_peer_funds.json`(수동 갱신, 출처 포함)으로 비교. 국민연금은 본 대시보드 최신값.
+  타 기관은 종목 공시가 없거나 상위 5개뿐이라 종목 단위 추적은 국민연금 전용.
 - API 키는 환경변수로만 받는다: `DART_API_KEY`(대량보유 공시), `KOSIS_API_KEY`(기금 월별).
   GitHub Actions에서는 저장소 secrets 또는 variables에 등록하면 된다.
 

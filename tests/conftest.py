@@ -61,4 +61,5 @@ def tmp_repo(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "SECTOR_CACHE", str(data / "sector_cache.json"))
     monkeypatch.setattr(config, "SEED_FOREIGN", str(data / "seed_foreign_holdings.json"))
     monkeypatch.setattr(config, "HOLDINGS_CSV", str(data / "holdings_latest.csv"))
+    monkeypatch.setattr(config, "SEED_PEER_FUNDS", str(data / "seed_peer_funds.json"))
     return tmp_path

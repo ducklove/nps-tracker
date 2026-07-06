@@ -251,6 +251,53 @@
       sec.style.display='';
     }
 
+    /* ---------- 연기금·공제회 비교 (F-15) ----------
+       peerFunds(seed 수동 갱신 + NPS 라이브)의 규모·수익률·자산배분을 순수 HTML 바로 표시.
+       기관별 공시 시점·기준이 달라 각 행 tooltip에 기준을 명기한다. 없으면 섹션 숨김. */
+    function renderPeerFunds(){
+      const sec=document.getElementById('peerSection');
+      const box=document.getElementById('peerRows');
+      if(!sec || !box) return;
+      const pf=DATA.peerFunds;
+      const funds=(pf && pf.funds || []).filter(f=>f && f.total>0);
+      if(!funds.length) return;
+      const maxT=Math.max.apply(null, funds.map(f=>f.total));
+      const A=[['stock','주식','#2563eb'],['bond','채권','#94a3b8'],['altEtc','대체·기타','#f59e0b']];
+      const row=f=>{
+        const tipParts=[
+          f.name+(f.kind?' ('+f.kind+')':''),
+          (f.asOf||'-')+' '+(f.basis||'')+' 기준',
+        ];
+        if(f.returnPct!=null) tipParts.push(tt('{y}년 수익률 {r}%', {y:f.returnYear||'-', r:f.returnPct})+(f.returnNote?' ('+f.returnNote+')':''));
+        const alloc=f.allocation;
+        const stack=alloc
+          ? '<span class="peer-stack" title="'+esc(A.map(a=>a[1]+' '+(alloc[a[0]]!=null?alloc[a[0]]+'%':'-')).join(' · '))+'">'+
+              A.map(a=>{ const v=alloc[a[0]]; return v>0?'<span style="width:'+v+'%;background:'+a[2]+'"></span>':''; }).join('')+
+            '</span>'
+          : '<span class="peer-stack peer-stack-none">-</span>';
+        return '<div class="sector-row peer-row" title="'+esc(tipParts.join(' · '))+'">'+
+          '<span class="sector-name peer-name">'+esc(f.name)+
+            (f.kind==='공제회'?' <em>'+t('공제회')+'</em>':'')+'</span>'+
+          '<span class="contrib-track sector-track"><span class="sector-bar" style="width:'+
+            Math.max(1.5, f.total/maxT*100).toFixed(1)+'%"></span></span>'+
+          '<span class="sector-w peer-total">'+fmtKrwJo(f.total)+'</span>'+
+          '<span class="sector-chg '+(f.returnPct!=null?pctClass(f.returnPct):'')+'" title="'+
+            (f.returnPct!=null?esc((f.returnYear||'')+'년 수익률'+(f.returnNote?' · '+f.returnNote:'')):'')+'">'+
+            (f.returnPct!=null?fmtPct(f.returnPct):'-')+'</span>'+
+          stack+
+        '</div>';
+      };
+      box.innerHTML=funds.map(row).join('');
+      const legend=document.getElementById('peerLegend');
+      if(legend) legend.innerHTML=
+        A.map(a=>'<span class="peer-key"><i style="background:'+a[2]+'"></i>'+a[1]+'</span>').join('')+
+        '<span class="peer-key-note">'+t('막대=자산 규모(선형) · %=최근 연간 수익률 · 스택=자산배분')+'</span>';
+      const sub=document.getElementById('peerSub');
+      if(sub) sub.textContent=(pf.note||t('기관별 최근 공시 기준(시점 상이)'))+
+        (pf.updated?' · '+tt('갱신 {d}', {d:pf.updated}):'');
+      sec.style.display='';
+    }
+
     /* ---------- 연말 구성 변화 (F-6) ----------
        발행물 yoy(최신 두 연말 아카이브 비교)를 3열로 표시. 아카이브가 2개 미만이면 숨김. */
     function renderYoy(){
@@ -835,6 +882,7 @@
     renderWarnings();
     renderContrib();
     renderSectors();
+    renderPeerFunds();
     renderYoy();
     renderForeign();
     renderTable();

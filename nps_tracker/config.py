@@ -14,6 +14,9 @@ ROOT = os.environ.get("NPS_TRACKER_ROOT") or os.path.dirname(os.path.dirname(os.
 DATA = os.path.join(ROOT, "data")
 SEED_HOLDINGS = os.path.join(DATA, "seed_holdings_latest.json")
 SEED_FUND_PORTFOLIO = os.path.join(DATA, "seed_fund_portfolio.json")
+# 연기금·공제회 비교(F-15) — 타 기관은 공시가 연·분기 스냅샷뿐이라 수동 갱신 seed(커밋 대상).
+# 국민연금 항목은 발행 시 본 대시보드 최신 시계열 값으로 대체된다(fund.get_peer_funds).
+SEED_PEER_FUNDS = os.path.join(DATA, "seed_peer_funds.json")
 NAV_HISTORY = os.path.join(DATA, "nav_history.json")
 # 가격 증분 캐시 — git에 커밋하지 않음(.gitignore). GitHub Actions에서는 actions/cache로 영속.
 PRICE_CACHE = os.path.join(DATA, "price_cache.json")

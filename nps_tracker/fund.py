@@ -170,6 +170,39 @@ def get_fund_portfolio(nav_hist: list[dict] | None = None) -> dict | None:
     return fp
 
 
+# ---------- 연기금·공제회 비교(F-15) ----------
+def get_peer_funds(fund_portfolio: dict | None = None) -> dict | None:
+    """연기금·공제회 비교 데이터. seed(수동 갱신)를 읽고, 국민연금 항목의 규모·배분·기준시점을
+    본 대시보드 최신 시계열 값으로 대체한다(seed 값은 시계열이 없을 때의 폴백).
+
+    타 기관은 종목 공시가 없거나 상위 5개뿐이라 규모·자산배분·수익률 비교만 제공한다.
+    seed가 없으면 None(발행물에서 섹션 생략).
+    """
+    seed = _read_json(config.SEED_PEER_FUNDS, {}) or {}
+    funds = [dict(f) for f in seed.get("funds") or [] if f.get("name") and f.get("total")]
+    if not funds:
+        return None
+    series = (fund_portfolio or {}).get("series") or []
+    latest = series[-1] if series else None
+    if latest and latest.get("total"):
+        for f in funds:
+            if f.get("key") != "nps":
+                continue
+            stock = (latest.get("domestic_stock") or 0) + (latest.get("foreign_stock") or 0)
+            bond = (latest.get("domestic_bond") or 0) + (latest.get("foreign_bond") or 0)
+            alt_etc = (latest.get("alternative") or 0) + (latest.get("short_term") or 0)
+            total = stock + bond + alt_etc
+            if total:
+                f["total"] = latest["total"]
+                f["asOf"] = latest.get("period")
+                f["basis"] = "금융부문 6대 자산군 합" + (" · 추정" if latest.get("estimated") else "")
+                f["allocation"] = {"stock": round(stock / total * 100, 1),
+                                   "bond": round(bond / total * 100, 1),
+                                   "altEtc": round(alt_etc / total * 100, 1)}
+    funds.sort(key=lambda f: f.get("total") or 0, reverse=True)
+    return {"updated": seed.get("updated"), "note": seed.get("note"), "funds": funds}
+
+
 # ---------- seed (폴백) ----------
 def load_baseline() -> tuple[list[dict], str | None]:
     d = _read_json(config.SEED_HOLDINGS, {}) or {}

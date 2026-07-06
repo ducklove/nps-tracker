@@ -176,3 +176,14 @@ def test_atom_feed_written(published):
     assert "nav-2026-06-09" in first_entry
     assert "NAV 1033.33" in first_entry and "+1.29%" in first_entry
     assert "<updated>2026-06-09T16:00:00+09:00</updated>" in first_entry
+
+
+def test_peer_funds_added_to_outputs(tmp_repo):
+    peer = {"updated": "2026-07-06", "note": "테스트",
+            "funds": [{"key": "nps", "name": "국민연금", "total": 1}]}
+    write_outputs("2026-06-09", "seed(2024-12-31)", _holdings(), 31_000, 1033.33,
+                  None, None, None, HIST, [], fund_portfolio=None, peer_funds=peer)
+    data_json = json.loads((tmp_repo / "data.json").read_text(encoding="utf-8"))
+    current = json.loads((tmp_repo / "current.json").read_text(encoding="utf-8"))
+    assert data_json["peerFunds"] == peer
+    assert current["peerFunds"] == peer

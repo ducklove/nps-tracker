@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from . import config
 from .archive import compute_yoy, ensure_archive
-from .fund import get_fund_portfolio, load_baseline, save_baseline
+from .fund import get_fund_portfolio, get_peer_funds, load_baseline, save_baseline
 from .io_utils import _read_json
 from .nav import _evaluate_today, _mtd_pct, _today_change_pct, _ytd_pct, build_nav_history
 from .publish import write_outputs
@@ -147,6 +147,9 @@ def main(argv=None):
     # 기금 전체·부문별 평가액(시트 공표 + KOSIS + 추정). 추정월 국내주식엔 본 사이트 일별 평가액 사용.
     fund_portfolio = get_fund_portfolio(nav_hist)
 
+    # 연기금·공제회 비교(F-15) — seed(수동 갱신) + 국민연금 라이브 값. 없으면 섹션 생략.
+    peer_funds = get_peer_funds(fund_portfolio)
+
     # 섹터 분석(F-7): 업종분류(KRX→KIND→DART)를 평가 종목에 부착해 섹터별 비중·등락·기여도 집계.
     by_value = [h["stock_code"] for h in
                 sorted(valid, key=lambda h: h.get("market_value") or 0, reverse=True)]
@@ -194,7 +197,8 @@ def main(argv=None):
 
     write_outputs(snap_date, source, valid, total_value, nav, today_pct, mtd, ytd,
                   nav_hist, kospi, fund_portfolio, warnings=warnings,
-                  sectors=sectors, yoy=yoy, foreign=foreign, pension_trade=pension_trade)
+                  sectors=sectors, yoy=yoy, foreign=foreign, pension_trade=pension_trade,
+                  peer_funds=peer_funds)
 
     # OG 공유 카드(F-13) — Pillow 없거나 그리기 실패해도 발행은 이미 끝났으므로 경고만.
     if not args.limit:

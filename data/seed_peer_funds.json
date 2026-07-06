@@ -1,0 +1,84 @@
+{
+  "updated": "2026-07-06",
+  "note": "기관별 최근 공시 기준(시점 상이) · 규모 기준도 기관별 상이(금융자산/총자산) — 연 2~4회 수동 갱신",
+  "funds": [
+    {
+      "key": "nps",
+      "name": "국민연금",
+      "kind": "연금",
+      "asOf": "2025-12",
+      "total": 1458000000000000,
+      "returnPct": 18.82,
+      "returnYear": 2025,
+      "returnNote": "잠정",
+      "allocation": null,
+      "basis": "적립금(공표)",
+      "source": "https://fund.nps.or.kr/main.do"
+    },
+    {
+      "key": "geps",
+      "name": "공무원연금",
+      "kind": "연금",
+      "asOf": "2025-12",
+      "total": 12466700000000,
+      "returnPct": 17.4,
+      "returnYear": 2025,
+      "returnNote": "시간가중",
+      "allocation": {"stock": 33.8, "bond": 27.9, "altEtc": 38.3},
+      "basis": "금융자산",
+      "source": "https://www.geps.or.kr/mgtNotice_financialAsset_financialSummary_operationStatus"
+    },
+    {
+      "key": "tp",
+      "name": "사학연금",
+      "kind": "연금",
+      "asOf": "2025-12",
+      "total": 29728000000000,
+      "returnPct": 18.9,
+      "returnYear": 2025,
+      "returnNote": null,
+      "allocation": {"stock": 41.1, "bond": 33.8, "altEtc": 25.1},
+      "basis": "금융자산",
+      "source": "https://www.ngonews.kr/news/articleView.html?idxno=223835"
+    },
+    {
+      "key": "ktcu",
+      "name": "교직원공제회",
+      "kind": "공제회",
+      "asOf": "2025-11",
+      "total": 85314900000000,
+      "returnPct": 10.7,
+      "returnYear": 2025,
+      "returnNote": "11월 말 기준",
+      "allocation": {"stock": 15.5, "bond": 17.1, "altEtc": 67.4},
+      "basis": "총자산",
+      "source": "https://www.kyosu.net/news/articleView.html?idxno=202089"
+    },
+    {
+      "key": "poba",
+      "name": "행정공제회",
+      "kind": "공제회",
+      "asOf": "2025-12",
+      "total": 33826000000000,
+      "returnPct": null,
+      "returnYear": null,
+      "returnNote": null,
+      "allocation": null,
+      "basis": "총자산",
+      "source": "https://thevc.kr/poba"
+    },
+    {
+      "key": "mmaa",
+      "name": "군인공제회",
+      "kind": "공제회",
+      "asOf": "2025-12",
+      "total": 24463500000000,
+      "returnPct": null,
+      "returnYear": null,
+      "returnNote": null,
+      "allocation": null,
+      "basis": "총자산",
+      "source": "https://www.sedaily.com/article/20025710"
+    }
+  ]
+}

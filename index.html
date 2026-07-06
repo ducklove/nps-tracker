@@ -21,10 +21,10 @@
 <meta name="theme-color" content="#2563eb">
 <link rel="icon" type="image/png" href="assets/icon-192.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="stylesheet" href="assets/app.css?v=3">
+<link rel="stylesheet" href="assets/app.css?v=4">
 <!-- 데이터는 app.js가 data.json(fetch) → data.js(script) 순으로 캐시버스팅 로드해
      iframe 임베드에서도 항상 최신을 보장한다. ECharts는 SRI 적용해 CDN에서 동적 로드. -->
-<script src="assets/app.js?v=3" defer></script>
+<script src="assets/app.js?v=4" defer></script>
 </head>
 <body>
 <div class="container">
@@ -125,6 +125,17 @@
   <section class="pf-nav-chart-wrap" id="fundPieSection">
     <div class="pf-nav-header"><h3 data-i18n>현재 vs 목표 자산군 비중</h3><div data-i18n class="pf-sub" id="fundPieSub">최신 시점 기준</div></div>
     <div class="pf-nav-chart-container"><div id="npsFundPieChart"></div></div>
+  </section>
+
+  <section class="pf-nav-chart-wrap" id="peerSection" style="display:none;">
+    <div class="pf-nav-header">
+      <h3 data-i18n>연기금·공제회 비교</h3>
+      <div class="pf-sub" id="peerSub"></div>
+    </div>
+    <div class="sector-list-card">
+      <div id="peerRows"></div>
+      <div class="peer-legend" id="peerLegend"></div>
+    </div>
   </section>
 
   <section class="pf-nav-chart-wrap" id="yoySection" style="display:none;">
