@@ -44,8 +44,8 @@
 | `data/archive/holdings_*.json` | 연말 보유구성 원본 보존(불변) — 2개 이상부터 YoY 비교가 발행물에 실림 |
 | `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e) — 네트워크 호출 없음 |
 | `data/holdings_latest.csv` · `feed.xml` | 재사용 산출물(자동 생성) — 엑셀·시트용 CSV, 일별 NAV Atom 피드 |
-| `.github/workflows/` | `pages.yml` 평일 2회 갱신·배포(16:22 본 + 21:37 보조 KST, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
-| `scripts/nps-trigger.sh` | **정시 트리거**(상시 가동 서버 pi-worker=192.168.68.67의 crontab, 평일 15:45 KST) — GitHub cron은 실측 2~3시간 지연되므로 정시성은 서버 트리거가 담당, GitHub cron(16:22/21:37)은 서버 다운 대비 백업. 서버 배치: `~/bin/nps-trigger.sh` + `crontab`(gh CLI 인증 필요), 로그 `~/log/nps-trigger.log` |
+| `.github/workflows/` | `pages.yml` 갱신·배포(트리거는 아래 서버 crontab의 workflow_dispatch, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
+| `scripts/nps-trigger.sh` | **일 배치 트리거**(상시 가동 서버 pi-worker=192.168.68.67의 crontab, 평일 15:45 KST, 실패 시 60초 간격 3회 재시도) — GitHub schedule은 상시 2~3시간 지연·재등록 불능 문제로 미사용. 서버가 내려가면 모서비스(value-invest)도 내려가므로 별도 백업 스케줄 없음. 서버 배치: `~/bin/nps-trigger.sh` + `crontab`(gh CLI 인증 필요), 로그 `~/log/nps-trigger.log` |
 
 ## NAV 모델
 첫 스냅샷의 평가총액을 NAV 1000으로 고정한다(총좌수 = 첫 평가총액 / 1000). 이후 현금흐름 없이
