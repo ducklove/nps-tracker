@@ -636,6 +636,69 @@
       });
     }
 
+    /* ---------- 연기금 장중 매매동향(잠정) ----------
+       pi-worker 수집기(1분 폴링, KIS 시세성 잠정 집계)가 서빙하는 intraday.json을 표시.
+       date가 오늘(KST)이 아니거나 비어 있으면 섹션 숨김(휴장일·수집기 다운 시 자동 강등).
+       잠정치는 장 마감 후 확정 일별 데이터로 대체된다. */
+    const INTRADAY_URL='https://cantabile.tplinkdns.com/nps/intraday.json';
+    let _intraday=null;
+    function _kstClock(){
+      const p=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',
+        year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',
+        hour12:false, weekday:'short'}).formatToParts(new Date());
+      const g=t=>(p.find(x=>x.type===t)||{}).value||'';
+      return {date:g('year')+'-'+g('month')+'-'+g('day'), hhmm:g('hour')+':'+g('minute'),
+              weekday:g('weekday')};
+    }
+    function _intradayLive(){
+      const k=_kstClock();
+      return !['Sat','Sun','토','일'].some(d=>k.weekday.startsWith(d)) &&
+             k.hhmm>='08:55' && k.hhmm<='15:45';
+    }
+    function loadIntraday(){
+      fetch(INTRADAY_URL+'?t='+Date.now(),{cache:'no-store'})
+        .then(r=>{ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+        .then(d=>{
+          _intraday=(d && d.date===_kstClock().date && d.series && d.series.length)?d:null;
+          renderIntradayChart();
+        })
+        .catch(()=>{ _intraday=null; renderIntradayChart(); });
+    }
+    function renderIntradayChart(){
+      const sec=document.getElementById('intradaySection');
+      const el=document.getElementById('npsIntradayChart');
+      if(!sec || !el) return;
+      if(!_intraday || typeof echarts==='undefined'){ sec.style.display='none'; return; }
+      sec.style.display='';
+      const s=_intraday.series;
+      const last=s[s.length-1];
+      const sub=document.getElementById('intradaySub');
+      if(sub) sub.textContent=tt('KIS 잠정 집계(연기금 합산·국민연금 단독 아님) · 1분 갱신 · {u} 기준 · 누적 {v} · 마감 후 확정치로 대체',
+        {u:(_intraday.updated||'').slice(11,16), v:fmtSignedKrw(last.total)});
+      const T=_chartTheme();
+      _newChart(el).setOption({
+        grid:{left:64,right:16,top:30,bottom:24},
+        legend:T.legend({top:0, data:[t('합계'),'KOSPI','KOSDAQ']}),
+        tooltip:{trigger:'axis', formatter(ps){
+          let html='<strong>'+ps[0].axisValue+'</strong>';
+          ps.forEach(p=>{ html+='<br/>'+p.marker+p.seriesName+' '+fmtSignedKrw(p.value); });
+          return html;
+        }},
+        xAxis:T.cat(s.map(p=>p.time)),
+        yAxis:T.val({color:T.tc,fontSize:10,formatter:fmtKrwAxis}),
+        series:[
+          {name:t('합계'), type:'line', data:s.map(p=>p.total), showSymbol:false,
+           lineStyle:{width:2.5}, itemStyle:{color:'#2563eb'},
+           markLine:{silent:true, symbol:'none', label:{show:false},
+                     lineStyle:{color:T.gc}, data:[{yAxis:0}]}},
+          {name:'KOSPI', type:'line', data:s.map(p=>p.kospi), showSymbol:false,
+           lineStyle:{width:1}, itemStyle:{color:'#94a3b8'}},
+          {name:'KOSDAQ', type:'line', data:s.map(p=>p.kosdaq), showSymbol:false,
+           lineStyle:{width:1}, itemStyle:{color:'#f59e0b'}}
+        ]
+      });
+    }
+
     function renderNavWithKospi(){
       const el=document.getElementById('npsNavChart');
       const navAll=DATA.navHistory||[];
@@ -834,6 +897,7 @@
       if(typeof echarts==='undefined') return;
       renderTreemap(); renderPensionTradeChart(); renderNavWithKospi();
       renderFundTotalChart(); renderFundCompChart(); renderFundPieChart();
+      renderIntradayChart();
     }
 
     /* ECharts CDN 로드 실패: 빈 화면 대신 안내 문구. 기금 데이터가 없는 섹션은 기존처럼 숨김. */
@@ -887,6 +951,9 @@
     renderForeign();
     renderTable();
     _echartsReady.then(renderCharts, showChartError);
+    // 장중 잠정 매매: 최초 1회 + 장중(08:55~15:45 KST)에는 1분마다 갱신(탭이 보일 때만)
+    _echartsReady.then(loadIntraday, ()=>{});
+    setInterval(()=>{ if(_intradayLive() && document.visibilityState==='visible') loadIntraday(); }, 60000);
     window.addEventListener('resize',()=>_charts.forEach(c=>c.resize()));
   }
 

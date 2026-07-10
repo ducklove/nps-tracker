@@ -11,6 +11,7 @@
 | `https://ducklove.github.io/nps-tracker/data.js` | `window.NPS_DATA = {...}` 래퍼(구형 임베드·`file://` 열람 호환용) — 신규 소비자는 `data.json` 사용 |
 | `https://ducklove.github.io/nps-tracker/data/holdings_latest.csv` | 전체 보유내역 CSV(utf-8-sig) — 엑셀·구글시트에서 바로 열람 |
 | `https://ducklove.github.io/nps-tracker/feed.xml` | Atom 피드 — 일별 NAV 업데이트 구독(RSS 리더·자동화 트리거용) |
+| `https://cantabile.tplinkdns.com/nps/intraday.json` | **연기금 장중 매매(잠정)** — 1분 갱신 누적 순매수 시계열. 별도 채널(pi-worker 수집·서빙, CORS *). `date`가 오늘(KST)이 아니면 휴장/수집중단으로 간주할 것. 잠정치라 장 마감 확정치와 다름 |
 
 - GitHub Pages는 `access-control-allow-origin: *`을 내려주므로 브라우저 fetch에 CORS 제약이 없다.
 - CDN 캐시 우회: `data.json?t=<timestamp>` 처럼 고유 쿼리를 붙여 요청할 것(본 대시보드도 동일).
