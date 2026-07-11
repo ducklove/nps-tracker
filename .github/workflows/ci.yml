@@ -27,3 +27,17 @@ jobs:
 
       - name: Test (pytest, 오프라인)
         run: python -m pytest -q
+
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test (node --test, 프론트 순수 함수)
+        run: node --test tests/js

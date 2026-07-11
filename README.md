@@ -42,9 +42,9 @@
 | `data/nav_history.json` | NAV 시계열(매 실행 보유구성 기준일부터 전체 재계산) |
 | `data/seed_*.json` · `data/stock_meta.json` | 폴백 seed · 종목코드↔종목명 매핑 |
 | `data/archive/holdings_*.json` | 연말 보유구성 원본 보존(불변) — 2개 이상부터 YoY 비교가 발행물에 실림 |
-| `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e) — 네트워크 호출 없음 |
+| `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e, `tests/js/` 프론트 순수 함수 `node --test`) — 네트워크 호출 없음 |
 | `data/holdings_latest.csv` · `feed.xml` | 재사용 산출물(자동 생성) — 엑셀·시트용 CSV, 일별 NAV Atom 피드 |
-| `.github/workflows/` | `pages.yml` 갱신·배포(트리거는 아래 서버 crontab의 workflow_dispatch, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest |
+| `.github/workflows/` | `pages.yml` 갱신·배포(트리거는 아래 서버 crontab의 workflow_dispatch, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest+`node --test tests/js` |
 | `scripts/nps-trigger.sh` | **일 배치 트리거**(상시 가동 서버 pi-worker=192.168.68.67의 crontab, 평일 15:45 KST, 실패 시 60초 간격 3회 재시도) — GitHub schedule은 상시 2~3시간 지연·재등록 불능 문제로 미사용. 서버가 내려가면 모서비스(value-invest)도 내려가므로 별도 백업 스케줄 없음. 서버 배치: `~/bin/nps-trigger.sh` + `crontab`(gh CLI 인증 필요), 로그 `~/log/nps-trigger.log` |
 | `scripts/intraday_collector.py` | **연기금 장중 매매 수집기**(pi-worker systemd `nps-intraday.service`, 평일 08:50~15:40 KST 1분 폴링) — KIS 시세성 잠정 집계(FHPTJ04030000)를 `/srv/nps-intraday/intraday.json`에 적립, Caddy가 `https://cantabile.tplinkdns.com/nps/intraday.json`(CORS *)으로 서빙. 대시보드는 장중 1분 폴링으로 누적 순매수 곡선 표시, 휴장/장외엔 자동 숨김. 서버 원본: `~/Works/nps-intraday-collector.py`, 자격증명: `~/Works/kis_proxy/.env` 재사용 |
 
@@ -68,6 +68,7 @@ NAV 시계열은 매 실행 시 기준일부터 전체 재계산된다.
 pip install -r requirements.txt
 python fetch_data.py            # 산출물(data.js, data.json, current.json, data/nav_history.json) 갱신
 python -m pytest                # 오프라인 테스트 (requirements-dev.txt: pytest, ruff)
+node --test tests/js            # 프론트 순수 함수 테스트 (assets/format.js, 의존성 없음)
 ruff check .
 ```
 `index.html`을 브라우저로 열어 확인한다(file://에서는 data.js 폴백 경로로 로드된다).

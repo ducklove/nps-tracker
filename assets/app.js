@@ -1,5 +1,6 @@
 /* 국민연금 국내주식 포트폴리오 대시보드
    - ES module 미사용(file:// 로컬 열람 호환), IIFE 일반 스크립트(defer).
+   - 순수 포맷/계산 유틸은 assets/format.js(전역 NpsFormat, 선행 로드)에서 가져온다.
    - 데이터: data.json(fetch, 캐시버스팅) → 실패 시 data.js(script 폴백) → 둘 다 실패 시 빈 상태.
    - 데이터 계약 v2의 신규 필드(schemaVersion/composition/warnings/fundPortfolio.targets)는
      전부 선택적: 없으면(스키마 v1) 해당 UI를 우아하게 생략하고 기존 동작을 유지한다. */
@@ -7,7 +8,7 @@
   'use strict';
 
   /* ---------- XSS 위생: 외부 데이터 유래 문자열은 innerHTML·tooltip HTML 진입 전 esc ---------- */
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = NpsFormat.esc;
 
   /* ---------- URL 파라미터: ?embed=true (헤더·출처 숨김), ?theme=light|dark (부모 테마 강제) ---------- */
   const _params=new URLSearchParams(location.search);
@@ -17,20 +18,20 @@
 
   /* 테마: 쿼리 theme 우선 → localStorage → 시스템. (데이터 로드 전에 즉시 적용)
      저장 키는 'theme'(허브·위성 대시보드 공통). 구 키 'nps-theme'는 읽기 폴백 후 'theme'로 이전. */
-  let _savedTheme=localStorage.getItem('theme');
-  if(!_savedTheme){
-    const _legacyTheme=localStorage.getItem('nps-theme');
-    if(_legacyTheme){ _savedTheme=_legacyTheme; localStorage.setItem('theme',_legacyTheme); }
-  }
-  const _initialTheme=_themeParam || _savedTheme ||
-    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
-  document.documentElement.setAttribute('data-theme', _initialTheme);
+  const _themeInit=NpsFormat.resolveInitialTheme({
+    param:_themeParam,
+    saved:localStorage.getItem('theme'),
+    legacy:localStorage.getItem('nps-theme'),
+    prefersDark:!!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches),
+  });
+  if(_themeInit.migrate) localStorage.setItem('theme',_themeInit.migrate);
+  document.documentElement.setAttribute('data-theme', _themeInit.theme);
 
   /* ---------- 한국어 고정 ----------
      t()=리터럴 반환, tt()=template {x} 슬롯 치환. */
   document.documentElement.lang='ko';
   const t=s=>s;
-  const tt=(key,vars)=>{ let s=t(key); Object.keys(vars||{}).forEach(k=>{ s=s.split('{'+k+'}').join(vars[k]); }); return s; };
+  const tt=NpsFormat.tt;
   const LOC='ko-KR';
 
   /* ---------- ECharts CDN 로더 (SRI) ---------- */
@@ -74,48 +75,10 @@
   /* ---------- 초기화(비동기 진입점) ---------- */
   function init(DATA){
 
-    /* ---------- 포매터 ---------- */
-    function fmtKrwJo(v){
-      const av=Math.abs(v);
-      if(av>=1e12){ const x=v/1e12; const d=av>=1e15?0:av>=1e14?1:av>=1e13?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'조'; }
-      if(av>=1e8){ const x=v/1e8; const d=av>=1e11?0:av>=1e10?1:av>=1e9?2:3; return x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d})+'억'; }
-      return Math.round(v).toLocaleString('ko-KR')+'원';
-    }
-    function fmtSignedKrw(v){ if(v==null) return '-'; return (v>0?'+':'')+fmtKrwJo(v); }
-    function fmtKrwAxis(v){
-      const av=Math.abs(v||0);
-      if(av>=1e12) return (v/1e12).toFixed(1)+'조';
-      if(av>=1e8) return (v/1e8).toFixed(0)+'억';
-      return Math.round(v).toLocaleString('ko-KR');
-    }
-    function fmtPct(v){ if(v==null) return '-'; return (v>0?'+':'')+v.toFixed(2)+'%'; }
-    function fmtPlainPct(v){ if(v==null) return '-'; return v.toFixed(2)+'%'; }
-    function fmtShares(v){
-      if(v==null) return '-';
-      const av=Math.abs(v);
-      return Number(v).toLocaleString(LOC,{maximumFractionDigits:av>=1000?0:2});
-    }
-    function pctClass(v){ if(v==null||v===0) return 'nps-neutral'; return v>0?'nps-up':'nps-down'; }
-
-    /* 등락률 → 색 (snapshot_nps의 returnToColor 이식) */
-    function returnToColor(pct, range){
-      range=range||20;
-      if(pct==null) return '#9ca3af';
-      let t=Math.max(-1,Math.min(1,pct/range)); const a=Math.abs(t);
-      const gray=[156,163,175], blue=[37,99,235], red=[220,38,38];
-      const tgt=t<0?blue:red;
-      const r=Math.round(gray[0]+(tgt[0]-gray[0])*a), g=Math.round(gray[1]+(tgt[1]-gray[1])*a), b=Math.round(gray[2]+(tgt[2]-gray[2])*a);
-      return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
-    }
-    /* 트리맵 색 (blue→gray→red, ±5% clamp) */
-    function treemapColor(pct){
-      if(pct==null) return _isDark()?'#475569':'#9ca3af';
-      const c=Math.max(-5,Math.min(5,pct)); const t=(c+5)/10;
-      let r,g,b;
-      if(t<0.5){ const s=t/0.5; r=Math.round(37+(148-37)*s); g=Math.round(99+(163-99)*s); b=Math.round(235+(184-235)*s); }
-      else{ const s=(t-0.5)/0.5; r=Math.round(148+(220-148)*s); g=Math.round(163+(38-163)*s); b=Math.round(184+(38-184)*s); }
-      return 'rgb('+r+','+g+','+b+')';
-    }
+    /* ---------- 포매터 (순수 구현은 assets/format.js) ---------- */
+    const {fmtKrwJo, fmtSignedKrw, fmtKrwAxis, fmtPct, fmtPlainPct, fmtShares, pctClass, returnToColor}=NpsFormat;
+    /* 트리맵 색: 순수 함수(format.js)에 현재 테마만 주입 */
+    function treemapColor(pct){ return NpsFormat.treemapColor(pct, _isDark()); }
 
     /* ---------- 테마 ---------- */
     function _isDark(){ return document.documentElement.getAttribute('data-theme')==='dark'; }
@@ -191,17 +154,8 @@
       const sec=document.getElementById('contribSection');
       if(!sec) return;
       const universe=DATA.holdings||[];
-      const items=[]; let totalPrev=0;
-      universe.forEach(h=>{
-        if(!h || h.change_pct==null || !(h.market_value>0)) return;   // change_pct null 제외
-        const denom=1+h.change_pct/100;
-        if(!(denom>0)) return;
-        const prev=h.market_value/denom;
-        totalPrev+=prev;
-        items.push({name:h.stock_name||h.stock_code||'-', mv:h.market_value, prev:prev});
-      });
-      if(!items.length || !(totalPrev>0)){ sec.style.display='none'; return; }   // 데이터 부족 → 숨김
-      items.forEach(it=>{ it.contrib=(it.mv-it.prev)/totalPrev*100; });
+      const items=NpsFormat.computeContributions(universe);
+      if(!items){ sec.style.display='none'; return; }   // 데이터 부족 → 숨김
       const ups=items.filter(it=>it.contrib>0).sort((a,b)=>b.contrib-a.contrib).slice(0,5);
       const downs=items.filter(it=>it.contrib<0).sort((a,b)=>a.contrib-b.contrib).slice(0,5);
       if(!ups.length && !downs.length){ sec.style.display='none'; return; }
@@ -366,15 +320,8 @@
       const tbody=document.querySelector('#npsTable tbody');
       const all=_holdings();
       const q=_searchQuery.trim().toLowerCase();
-      let rows=all.slice();
-      if(q) rows=rows.filter(h=>
-        String(h.stock_name||'').toLowerCase().indexOf(q)>=0 ||
-        String(h.stock_code||'').toLowerCase().indexOf(q)>=0);
-      rows.sort((a,b)=>{
-        if(_sortKey==='name') return _sortAsc? (a.stock_name||'').localeCompare(b.stock_name||'','ko') : (b.stock_name||'').localeCompare(a.stock_name||'','ko');
-        const m={change:'change_pct',mv:'market_value',own:'ownership_pct'}[_sortKey];
-        const va=a[m]||0, vb=b[m]||0; return _sortAsc? va-vb : vb-va;
-      });
+      const rows=NpsFormat.filterHoldings(all, _searchQuery);
+      rows.sort(NpsFormat.holdingsComparator(_sortKey, _sortAsc));
       tbody.innerHTML = rows.map((h,i)=>{       // 번호는 필터·정렬 결과 기준 재번호
         const cp=h.change_pct;
         return '<tr>'+
@@ -500,25 +447,10 @@
     let _navRange='all';
     let _pensionTradeRange='all';
     /* asOf에서 캘린더 기준으로 거슬러 올라간 절단일(YYYY-MM-DD). 'all'·파싱 불가 시 null. */
-    function _rangeCutoff(range, asOf){
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(asOf||'')) return null;
-      if(range==='ytd') return asOf.slice(0,4)+'-01-01';
-      const months={'1m':1,'3m':3,'6m':6}[range];
-      if(!months) return null;
-      const p=asOf.split('-').map(Number);
-      let y=p[0], m=p[1]-months;
-      while(m<1){ m+=12; y--; }
-      const lastDay=new Date(Date.UTC(y,m,0)).getUTCDate();   // m(1-based)월의 말일
-      const d=Math.min(p[2],lastDay);
-      return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    }
+    const _rangeCutoff=NpsFormat.rangeCutoff;
 
     /* ---------- 구간 성과 지표 (F-8): 선택 구간의 수익률·KOSPI 대비·변동성·MDD ---------- */
-    function _stdev(a){
-      if(a.length<2) return null;
-      const m=a.reduce((x,y)=>x+y,0)/a.length;
-      return Math.sqrt(a.reduce((x,y)=>x+(y-m)*(y-m),0)/(a.length-1));
-    }
+    const _stdev=NpsFormat.stdev;
     function renderNavStats(nav, kRaw){
       const el=document.getElementById('navStats');
       if(!el) return;
@@ -655,11 +587,7 @@
       return {date:g('year')+'-'+g('month')+'-'+g('day'), hhmm:g('hour')+':'+g('minute'),
               weekday:g('weekday')};
     }
-    function _intradayLive(){
-      const k=_kstClock();
-      return !['Sat','Sun','토','일'].some(d=>k.weekday.startsWith(d)) &&
-             k.hhmm>='08:55' && k.hhmm<='15:45';
-    }
+    function _intradayLive(){ return NpsFormat.isIntradayLive(_kstClock()); }
     function loadIntraday(){
       fetch(INTRADAY_URL+'?t='+Date.now(),{cache:'no-store'})
         .then(r=>{ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
@@ -716,8 +644,7 @@
         if(cut){ const w=navAll.filter(d=>d.date>=cut); if(w.length){ nav=w; renorm=true; } }
       }
       const labels=nav.map(d=>d.date.slice(5));
-      const navBase=renorm && nav[0].nav>0 ? nav[0].nav : null;
-      const navValues=navBase ? nav.map(d=>+(d.nav/navBase*1000).toFixed(2)) : nav.map(d=>d.nav);
+      const navValues=(renorm && nav[0].nav>0) ? NpsFormat.renormalizeTo1000(nav.map(d=>d.nav)) : nav.map(d=>d.nav);
       /* 선 색: 선택 구간 수익률 기반('전체'는 기존처럼 최근 365포인트 기준) */
       let navColor='#9ca3af';
       if(nav.length>1){
@@ -727,8 +654,7 @@
       /* KOSPI도 같은 구간에서 시작점=1000으로 정규화 */
       const kospiByDate=Object.fromEntries((DATA.kospiHistory||[]).map(d=>[d.date,d.value]));
       const kRaw=nav.map(d=>kospiByDate[d.date]!=null?kospiByDate[d.date]:null);
-      let kNorm=[]; const kBase=kRaw.find(v=>v!=null&&v>0);
-      if(kBase) kNorm=kRaw.map(v=>v!=null?+(v/kBase*1000).toFixed(2):null);
+      const kNorm=NpsFormat.renormalizeTo1000(kRaw);   // 유효 시작점 없으면 []
       renderNavStats(nav, kRaw);   // 구간 성과 지표(F-8) — 기간 선택과 함께 갱신
       const series=[{name:t('국민연금'), type:'line', data:navValues, symbol:'none', smooth:false, z:3,
         lineStyle:{color:navColor,width:2}, itemStyle:{color:navColor},
@@ -790,7 +716,7 @@
         label:{show:true, position:'insideTop', color:_textColor(), fontSize:10, formatter:t('추정')},
         data:[[{xAxis:periods[i]},{xAxis:periods[periods.length-1]}]]};
     }
-    function fundPeriodLabel(p){ const a=String(p).split('-'); return a[1]&&a[1]!=='01'? a[0]+'.'+(+a[1]) : a[0]; }
+    const fundPeriodLabel=NpsFormat.fundPeriodLabel;
     function _fundSeries(){ const fp=DATA.fundPortfolio; return fp&&fp.series&&fp.series.length? fp.series : null; }
     // 월별 X축 라벨: 매년 1월과 마지막 포인트만 표시(연도 또는 연.월)
     function _fundAxisLabel(periods){
