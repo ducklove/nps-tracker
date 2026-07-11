@@ -2,6 +2,10 @@
   --bg:#f5f5f5; --surface:#ffffff; --surface-muted:rgba(148,163,184,.10);
   --text:#1a1a1a; --text-secondary:#666; --border:#e0e0e0; --primary:#2563eb;
   --up:#dc2626; --down:#2563eb;
+  /* 크기 토큰(테마 무관 — 다크에서 재정의하지 않음). 기존 하드코딩 px의 값 보존 치환용:
+     radius sm=버튼·입력, md=노트·차트 패널, lg=카드·테이블 랩. */
+  --radius-sm:8px; --radius-md:10px; --radius-lg:12px;
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
 }
 [data-theme="dark"]{
   --bg:#0f172a; --surface:#1e293b; --surface-muted:rgba(148,163,184,.12);
@@ -21,7 +25,7 @@ header h1{font-size:22px; margin:0 0 6px;}
 .comp-badge{border:1px solid var(--border); border-radius:999px; padding:2px 9px; background:var(--surface-muted); white-space:nowrap;}
 #themeToggle{
   background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
-  border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px;
+  border-radius:var(--radius-sm); padding:5px 10px; cursor:pointer; font-size:12px;
   position:relative;
 }
 #themeToggle::after{content:""; position:absolute; left:-2px; right:-2px; top:-5px; bottom:-5px;}
@@ -29,14 +33,14 @@ header h1{font-size:22px; margin:0 0 6px;}
 /* 허브(Value Compass) 백링크 — 터치 타겟 확보(의사요소로 40px 근접), embed(iframe)에서는 숨김 */
 .hub-link{
   display:inline-flex; align-items:center; min-height:32px; padding:5px 8px;
-  color:var(--text-secondary); font-size:12px; text-decoration:none; border-radius:8px;
+  color:var(--text-secondary); font-size:12px; text-decoration:none; border-radius:var(--radius-sm);
   position:relative;
 }
 .hub-link::after{content:""; position:absolute; left:0; right:0; top:-4px; bottom:-4px;}
 .hub-link:hover{color:var(--primary);}
 body.embed .hub-link{display:none;}
 .source-note{
-  margin:14px 0 22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
+  margin:14px 0 22px; padding:10px var(--space-3); border:1px solid var(--border); border-radius:var(--radius-md);
   background:var(--surface-muted); color:var(--text-secondary); font-size:12px; line-height:1.55;
 }
 /* 본문 내 링크 — padding+음수 margin으로 레이아웃 변화 없이 히트 영역만 40px 근접 확장 */
@@ -45,7 +49,7 @@ body.embed .hub-link{display:none;}
 
 /* 데이터 경고 배너 (amber) — embed 모드에서도 표시(컴팩트) */
 .warn-banner{
-  margin:0 0 18px; padding:10px 14px; border:1px solid rgba(245,158,11,.55); border-radius:10px;
+  margin:0 0 18px; padding:10px 14px; border:1px solid rgba(245,158,11,.55); border-radius:var(--radius-md);
   background:rgba(245,158,11,.10); color:#92400e; font-size:12px; line-height:1.55;
 }
 [data-theme="dark"] .warn-banner{border-color:rgba(245,158,11,.45); background:rgba(245,158,11,.12); color:#fcd34d;}
@@ -54,15 +58,15 @@ body.embed .hub-link{display:none;}
 body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 
 /* 요약 카드 */
-.pf-summary{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:22px;}
-.pf-summary-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px;}
+.pf-summary{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:var(--space-3); margin-bottom:22px;}
+.pf-summary-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:var(--space-4);}
 .pf-summary-label{font-size:12px; color:var(--text-secondary); margin-bottom:6px;}
 .pf-summary-value{font-size:22px; font-weight:700;}
 .pf-summary-sub{font-size:12px; color:var(--text-secondary); margin-top:4px;}
 
 /* 오늘의 기여도 (F-1) */
-.contrib-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px;}
-.contrib-col{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px;}
+.contrib-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:var(--space-3);}
+.contrib-col{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px var(--space-4);}
 .contrib-col-title{font-size:12px; color:var(--text-secondary); margin-bottom:8px;}
 .contrib-row{display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;}
 .contrib-name{flex:0 0 110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -80,18 +84,18 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 .pf-sub{font-size:12px; color:var(--text-secondary); margin-top:3px;}
 .pf-nav-chart-container{height:340px;}
 .pf-trade-chart-container{height:260px;}
-#npsTreemap{height:560px; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
-#npsNavChart,#npsPensionTradeChart,#npsIntradayChart,#npsValueChart,#npsFundTotalChart,#npsFundCompChart,#npsFundPieChart{width:100%; height:100%; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
-.pf-trade-stats{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px;}
+#npsTreemap{height:560px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface);}
+#npsNavChart,#npsPensionTradeChart,#npsIntradayChart,#npsValueChart,#npsFundTotalChart,#npsFundCompChart,#npsFundPieChart{width:100%; height:100%; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface);}
+.pf-trade-stats{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:10px var(--space-3);}
 
 /* 섹션 헤더 우측 도구(기간 선택·검색) */
 .pf-flex-header{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
 
 /* NAV 기간 선택 (F-2) — 시각 크기(≈26px)는 유지, 의사요소로 히트 영역만 40px 근접 확장 */
-.pf-range{display:flex; gap:4px;}
+.pf-range{display:flex; gap:var(--space-1);}
 .pf-range button{
   background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
-  border-radius:8px; padding:3px 9px; cursor:pointer; font-size:12px;
+  border-radius:var(--radius-sm); padding:3px 9px; cursor:pointer; font-size:12px;
   position:relative;
 }
 .pf-range button::after{content:""; position:absolute; left:-2px; right:-2px; top:-7px; bottom:-7px;}
@@ -105,7 +109,7 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 .stat-chip .stat-v{font-weight:700; font-size:13px;}
 
 /* 섹터 분석 (F-7) */
-.sector-list-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px;}
+.sector-list-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:var(--space-3) 14px;}
 .sector-row{display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px;}
 .sector-name{flex:0 0 150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .sector-name em{font-style:normal; color:var(--text-secondary); font-size:11px;}
@@ -132,7 +136,7 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 }
 
 /* 테이블 */
-.pf-table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px;}
+.pf-table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--radius-lg);}
 .pf-table{width:100%; border-collapse:collapse; font-size:13px; background:var(--surface);}
 .pf-table thead th{
   position:sticky; top:0; background:var(--surface); border-bottom:1px solid var(--border);
@@ -149,11 +153,11 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 .pf-sortable:focus-visible{outline:2px solid var(--primary); outline-offset:-2px;}
 
 /* 테이블 검색 (F-3) */
-.pf-table-tools{display:flex; align-items:center; gap:8px;}
+.pf-table-tools{display:flex; align-items:center; gap:var(--space-2);}
 .pf-search-count{font-size:12px; color:var(--text-secondary); white-space:nowrap;}
 #tableSearch{
   background:var(--surface); color:var(--text); border:1px solid var(--border);
-  border-radius:8px; padding:5px 10px; font-size:12px; width:180px; max-width:60vw;
+  border-radius:var(--radius-sm); padding:5px 10px; font-size:12px; width:180px; max-width:60vw;
 }
 #tableSearch:focus{outline:none; border-color:var(--primary);}
 #tableSearch::placeholder{color:var(--text-secondary);}
@@ -166,7 +170,7 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 body.embed header, body.embed .source-note{display:none;}
 body.embed .container{padding-top:16px; max-width:none;}
 .load-all-wrap{text-align:center; margin-top:14px;}
-#loadAllBtn{background:var(--surface); color:var(--primary); border:1px solid var(--border); border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px;}
+#loadAllBtn{background:var(--surface); color:var(--primary); border:1px solid var(--border); border-radius:var(--radius-sm); padding:var(--space-2) 18px; cursor:pointer; font-size:13px;}
 #loadAllBtn:hover{border-color:var(--primary);}
 
 /* 연기금·공제회 비교(F-15) */
@@ -189,4 +193,56 @@ body.embed .container{padding-top:16px; max-width:none;}
   .pf-table thead th{padding:12px 8px;}
   .pf-table td{padding:9px 8px;}
   #tableSearch{width:150px;}
+}
+
+/* 폰(≤560px) — ① 차트 높이 보정 ② 보유 종목 테이블 카드 변환.
+   태블릿(≤768px) 블록 뒤에 둬야 겹치는 테이블 패딩 규칙을 폰에서 이 블록이 확정한다. */
+@media (max-width:560px){
+  /* ① 차트 높이: 폰 화면비에 맞게 축소(트리맵 560→420, 라인차트 340→280).
+     일별 매매동향(260px)은 이미 적절 — 위 .pf-nav-chart-container 축소가 덮지 않도록 재선언(선언 순서 계약). */
+  .pf-nav-chart-container{height:280px;}
+  .pf-trade-chart-container{height:260px;}
+  #npsTreemap{height:420px;}
+
+  /* ② 보유 종목(#npsTable)만 행당 카드로 변환 — CSS 주도(마크업·JS 불변).
+     해외주식 테이블은 열 구성이 달라 기존 가로 스크롤(.pf-table-wrap) 유지. */
+  #npsTable{display:block;}
+  #npsTable thead{display:block;}
+  /* 정렬 헤더: 클릭·키보드(applySort)가 붙은 th 노드를 칩 형태로 유지 — 정렬 동작·aria-sort 불변 */
+  #npsTable thead tr{
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--border);
+  }
+  #npsTable thead tr::before{content:"정렬"; color:var(--text-secondary); font-size:11px; font-weight:400;}
+  #npsTable thead th{display:none;}
+  #npsTable thead th.pf-sortable{
+    display:inline-flex; align-items:center; position:static;
+    border:1px solid var(--border); border-radius:var(--radius-sm);
+    padding:var(--space-2) 11px; text-align:left;
+  }
+  #npsTable tbody{display:block;}
+  #npsTable tbody tr{
+    display:grid; grid-template-columns:auto minmax(0,1fr) auto;
+    gap:3px var(--space-2); padding:10px var(--space-3);
+    border-bottom:1px solid var(--border);
+  }
+  #npsTable tbody tr:last-child{border-bottom:0;}
+  #npsTable td{padding:0; white-space:normal;}
+  /* 1행: 순위 · 종목명 · 등락률(nps-up/down 색 클래스 그대로) */
+  #npsTable td.pf-col-num{grid-row:1; grid-column:1; width:auto;}
+  #npsTable td.pf-col-name{grid-row:1; grid-column:2; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  #npsTable td:nth-child(3){grid-row:1; grid-column:3;}
+  /* 2행~: 라벨(td::before)+값 — 값의 콤마·% 포맷은 JS 렌더 그대로 */
+  #npsTable td:nth-child(n+4){
+    grid-column:1 / -1; display:flex; justify-content:space-between; align-items:baseline;
+    font-variant-numeric:tabular-nums;
+  }
+  #npsTable td:nth-child(n+4)::before{color:var(--text-secondary); font-weight:400;}
+  #npsTable td:nth-child(4)::before{content:"현재가";}
+  #npsTable td:nth-child(5)::before{content:"추정수량";}
+  #npsTable td:nth-child(6)::before{content:"평가금액";}
+  #npsTable td:nth-child(7)::before{content:"비중";}
+  #npsTable td:nth-child(8)::before{content:"지분율";}
+  /* 검색 결과 없음(colspan=8) 단독 행 */
+  #npsTable td.pf-table-empty{display:block; grid-column:1 / -1; text-align:center; padding:18px var(--space-3);}
 }
