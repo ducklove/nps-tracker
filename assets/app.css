@@ -24,6 +24,13 @@ header h1{font-size:22px; margin:0 0 6px;}
   border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px;
 }
 #themeToggle:hover{color:var(--text);}
+/* 허브(Value Compass) 백링크 — 터치 타겟 확보(min-height 32px), embed(iframe)에서는 숨김 */
+.hub-link{
+  display:inline-flex; align-items:center; min-height:32px; padding:5px 8px;
+  color:var(--text-secondary); font-size:12px; text-decoration:none; border-radius:8px;
+}
+.hub-link:hover{color:var(--primary);}
+body.embed .hub-link{display:none;}
 .source-note{
   margin:14px 0 22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
   background:var(--surface-muted); color:var(--text-secondary); font-size:12px; line-height:1.55;

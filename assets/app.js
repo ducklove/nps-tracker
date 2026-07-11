@@ -15,8 +15,13 @@
   const _themeParam=_params.get('theme');
   if(_embed) document.body.classList.add('embed');
 
-  /* 테마: 쿼리 theme 우선 → localStorage → 시스템. (데이터 로드 전에 즉시 적용) */
-  const _savedTheme=localStorage.getItem('nps-theme');
+  /* 테마: 쿼리 theme 우선 → localStorage → 시스템. (데이터 로드 전에 즉시 적용)
+     저장 키는 'theme'(허브·위성 대시보드 공통). 구 키 'nps-theme'는 읽기 폴백 후 'theme'로 이전. */
+  let _savedTheme=localStorage.getItem('theme');
+  if(!_savedTheme){
+    const _legacyTheme=localStorage.getItem('nps-theme');
+    if(_legacyTheme){ _savedTheme=_legacyTheme; localStorage.setItem('theme',_legacyTheme); }
+  }
   const _initialTheme=_themeParam || _savedTheme ||
     (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
   document.documentElement.setAttribute('data-theme', _initialTheme);
@@ -121,7 +126,7 @@
     function renderSummary(){
       const s=DATA.summary||{};
       document.getElementById('metaAsOf').textContent =
-        tt('기준일 {d} · 갱신 {u} · {n}종목', {d:s.asOf||DATA.asOf||'-', u:DATA.lastUpdated||'-', n:(s.count||0).toLocaleString(LOC)});
+        tt('기준일 {d} · 최종 업데이트: {u} · {n}종목', {d:s.asOf||DATA.asOf||'-', u:DATA.lastUpdated||'-', n:(s.count||0).toLocaleString(LOC)});
       const cards=[
         {label:t('국내주식 평가금액'), value:fmtKrwJo(s.totalValue||0), sub:'NAV '+(s.nav!=null?s.nav.toFixed(2):'-'), cls:''},
         {label:esc(s.asOf||DATA.asOf||t('기준일')), value:fmtPct(s.todayPct), sub:t('일간 등락률(가중평균)'), cls:pctClass(s.todayPct)},
@@ -934,7 +939,7 @@
       _toggle.addEventListener('click',()=>{
         const next=_isDark()?'light':'dark';
         document.documentElement.setAttribute('data-theme',next);
-        localStorage.setItem('nps-theme',next);
+        localStorage.setItem('theme',next);
         syncToggleLabel(); renderCharts();
       });
       syncToggleLabel();
