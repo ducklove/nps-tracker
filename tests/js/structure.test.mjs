@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const read = rel => readFileSync(fileURLToPath(new URL('../../' + rel, import.meta.url)), 'utf8');
 const html = read('index.html');
 const css = read('assets/app.css');
+const appJs = read('assets/app.js');
 
 test('index.html: assets ?v= 캐시버스팅 버전이 모든 자산에서 동일', () => {
   const versions = [...html.matchAll(/assets\/[\w.-]+\.(?:css|js)\?v=(\d+)/g)].map(m => m[1]);
@@ -38,4 +39,25 @@ test('app.css: ≤560px 차트 높이 보정(트리맵 420px·라인 280px) 존�
   const phone = css.slice(css.lastIndexOf('@media (max-width:560px)'));
   assert.ok(phone.includes('#npsTreemap{height:420px;}'), '트리맵 모바일 높이 규칙 누락');
   assert.ok(phone.includes('.pf-nav-chart-container{height:280px;}'), 'NAV 차트 모바일 높이 규칙 누락');
+});
+
+// M-17: index.html의 ECharts preload는 app.js 동적 로더와 같은 파일을 미리 받기 위한 것.
+// URL 또는 SRI가 어긋나면 preload가 버려져 이중 다운로드가 되므로 일치를 계약으로 고정한다.
+test('index.html: ECharts preload가 app.js의 CDN URL·SRI 상수와 일치', () => {
+  const src = (/ECHARTS_SRC='([^']+)'/.exec(appJs) || [])[1];
+  const sri = (/ECHARTS_SRI='([^']+)'/.exec(appJs) || [])[1];
+  assert.ok(src && sri, 'app.js에서 ECHARTS_SRC/ECHARTS_SRI 상수를 찾지 못함');
+  const preload = /<link rel="preload" as="script" href="([^"]+)" integrity="([^"]+)" crossorigin="anonymous">/.exec(html);
+  assert.ok(preload, 'index.html에 ECharts preload 링크 누락');
+  assert.equal(preload[1], src, 'preload href가 app.js ECHARTS_SRC와 불일치');
+  assert.equal(preload[2], sri, 'preload integrity가 app.js ECHARTS_SRI와 불일치');
+});
+
+// F-18: 시계열 차트 인사이드 줌 — 모바일 세로 스크롤 보존(preventDefaultMouseMove:false)과
+// 휠 줌 전용(moveOnMouseWheel:false)이 계약. 옵션이 사라지면 모바일 스크롤이 죽는다.
+test('app.js: 시계열 인사이드 줌 계약(F-18) — inside·스크롤 보존 옵션', () => {
+  assert.ok(appJs.includes("type:'inside'"), 'dataZoom inside 누락');
+  assert.ok(appJs.includes('preventDefaultMouseMove:false'), '모바일 세로 스크롤 보존 옵션 누락');
+  assert.ok(appJs.includes('moveOnMouseWheel:false'), '휠 줌 전용 옵션 누락');
+  assert.ok(appJs.includes("dispatchAction({type:'dataZoom', start:0, end:100})"), '더블클릭 줌 리셋 누락');
 });

@@ -34,7 +34,13 @@
   const tt=NpsFormat.tt;
   const LOC='ko-KR';
 
-  /* ---------- ECharts CDN 로더 (SRI) ---------- */
+  /* ---------- ECharts CDN 로더 (SRI) ----------
+     동적 주입이라 첫 페인트를 막지 않는다(요약·테이블은 데이터 로드 즉시 렌더,
+     차트는 _echartsReady 이후 렌더 큐). index.html의 <link rel="preload">가
+     같은 URL·SRI로 다운로드를 선행하므로 두 값을 바꿀 땐 반드시 함께 갱신
+     (tests/js/structure.test.mjs가 일치를 검증).
+     빌드 선택: treemap 시리즈를 쓰므로 CDN의 echarts.common/simple 빌드
+     (line·bar·pie만 포함)는 렌더가 깨진다 → full 빌드 유지가 안전. */
   // SHA-384는 npm 패키지 echarts@5.6.0의 dist/echarts.min.js 원본 바이트 기준
   // (jsDelivr /npm/ 엔드포인트는 패키지 파일을 그대로 서빙).
   const ECHARTS_SRC='https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js';
@@ -387,10 +393,36 @@
 
     /* ---------- 차트 ---------- */
     let _charts=[];
-    function _newChart(el){
+    function _newChart(el, zoomable){
       const prev=echarts.getInstanceByDom(el);              // 개별 재렌더(기간 선택) 시 기존 인스턴스 정리
       if(prev){ prev.dispose(); _charts=_charts.filter(c=>c!==prev); }
-      const c=echarts.init(el); _charts.push(c); return c;
+      const c=echarts.init(el); _charts.push(c);
+      if(zoomable){   // F-18: 더블클릭(모바일 더블탭)=줌 전체 구간 리셋
+        c.getZr().on('dblclick', ()=>c.dispatchAction({type:'dataZoom', start:0, end:100}));
+      }
+      return c;
+    }
+
+    /* ---------- 시계열 인사이드 줌 (F-18) ----------
+       휠·핀치=줌, 드래그=팬. 트리맵·현재vs목표(비시계열)는 제외.
+       - preventDefaultMouseMove:false — 차트 위 세로 스와이프의 기본 스크롤을 막지 않아
+         모바일 페이지 스크롤과 공존(팬은 가로 이동 성분만 반영되므로 충돌 없음).
+       - moveOnMouseWheel:false — 휠은 줌 전용(휠 팬과 페이지 스크롤 혼동 방지).
+       - 기간 버튼은 차트를 dispose 후 재생성(_newChart)하므로 줌은 자동 리셋.
+       - keep: 인트라데이 1분 자동 갱신처럼 재렌더 간 줌 창(start/end %)을 유지할 때 전달. */
+    function _insideZoom(keep){
+      return [Object.assign({
+        type:'inside', xAxisIndex:0, zoomOnMouseWheel:true,
+        moveOnMouseMove:true, moveOnMouseWheel:false, preventDefaultMouseMove:false,
+      }, keep||{})];
+    }
+    /* 사용자가 줌 중인 차트의 줌 창(%). 줌 안 했으면 null — 재렌더 시 이어받기에 사용 */
+    function _currentZoom(el){
+      const prev=echarts.getInstanceByDom(el);
+      if(!prev) return null;
+      const dz=(prev.getOption().dataZoom||[])[0];
+      return (dz && dz.start!=null && dz.end!=null && (dz.start>0 || dz.end<100))
+        ? {start:dz.start, end:dz.end} : null;
     }
 
     /* 차트 공통 보일러플레이트: 테마 색 적용된 축·범례 팩토리 (각 차트 최종 옵션은 기존과 동일) */
@@ -565,9 +597,10 @@
       }
       sec.style.display='';
       renderPensionTradeStats(rows);
-      _newChart(el).setOption({
+      _newChart(el, true).setOption({
         grid:{left:60,right:18,top:hasGross?34:18,bottom:26},
         legend:T.legend({show:hasGross, top:2, right:0}),
+        dataZoom:_insideZoom(),
         xAxis:T.cat(labels, null, {splitLine:{show:false}}),
         yAxis:T.val({color:T.tc,fontSize:10, formatter:v=>fmtKrwAxis(v)}, {scale:true}),
         tooltip:{trigger:'axis', formatter(ps){
@@ -622,10 +655,13 @@
       const sub=document.getElementById('intradaySub');
       if(sub) sub.textContent=tt('KIS 잠정 집계(연기금 합산·국민연금 단독 아님) · 1분 갱신 · {u} 기준 · 누적 {v} · 마감 후 확정치로 대체',
         {u:(_intraday.updated||'').slice(11,16), v:fmtSignedKrw(last.total)});
+      /* 1분 자동 갱신이 차트를 재생성하므로, 사용자가 줌 중이면 줌 창(%)을 이어받는다 */
+      const keepZoom=_currentZoom(el);
       const T=_chartTheme();
-      _newChart(el).setOption({
+      _newChart(el, true).setOption({
         grid:{left:64,right:16,top:30,bottom:24},
         legend:T.legend({top:0, data:[t('합계'),'KOSPI','KOSDAQ']}),
+        dataZoom:_insideZoom(keepZoom),
         tooltip:{trigger:'axis', formatter(ps){
           let html='<strong>'+ps[0].axisValue+'</strong>';
           ps.forEach(p=>{ html+='<br/>'+p.marker+p.seriesName+' '+fmtSignedKrw(p.value); });
@@ -675,9 +711,10 @@
         areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:navColor+'33'},{offset:1,color:navColor+'00'}]}}}];
       if(kNorm.length){ series.push({name:'KOSPI', type:'line', data:kNorm, symbol:'none', smooth:false, z:3, lineStyle:{color:'#94a3b8',width:1.5,type:'dashed'}, itemStyle:{color:'#94a3b8'}}); }
       const T=_chartTheme();
-      _newChart(el).setOption({
+      _newChart(el, true).setOption({
         grid:{left:60,right:14,top:28,bottom:26},
         legend:T.legend({show:kNorm.length>0, top:0, right:0}),
+        dataZoom:_insideZoom(),
         xAxis:T.cat(labels, null, {splitLine:{show:false}}),
         yAxis:T.val(null, {scale:true}),
         /* 값이 구간 시작=1000 기준이므로 퍼센트도 구간 시작 대비 */
@@ -693,7 +730,7 @@
     if(_rangeWrap){
       _rangeWrap.querySelectorAll('button[data-range]').forEach(btn=>{
         btn.addEventListener('click',()=>{
-          if(btn.dataset.range===_navRange) return;
+          // 같은 버튼 재클릭도 재렌더 — 인사이드 줌(F-18) 리셋 수단을 겸한다
           _navRange=btn.dataset.range;
           _rangeWrap.querySelectorAll('button[data-range]').forEach(b=>b.classList.toggle('active', b===btn));
           if(typeof echarts!=='undefined'){ renderNavWithKospi(); }
@@ -704,7 +741,7 @@
     if(_pensionTradeRangeWrap){
       _pensionTradeRangeWrap.querySelectorAll('button[data-range]').forEach(btn=>{
         btn.addEventListener('click',()=>{
-          if(btn.dataset.range===_pensionTradeRange) return;
+          // 같은 버튼 재클릭도 재렌더 — 인사이드 줌(F-18) 리셋 수단을 겸한다
           _pensionTradeRange=btn.dataset.range;
           _pensionTradeRangeWrap.querySelectorAll('button[data-range]').forEach(b=>b.classList.toggle('active', b===btn));
           if(typeof echarts!=='undefined'){ renderPensionTradeChart(); }
@@ -749,8 +786,9 @@
       const totals=series.map(s=>s.total||0);
       const T=_chartTheme();
       const primary=getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()||'#2563eb';
-      _newChart(el).setOption({
+      _newChart(el, true).setOption({
         grid:{left:62,right:16,top:16,bottom:26},
+        dataZoom:_insideZoom(),
         xAxis:T.cat(periods, _fundAxisLabel(periods), {boundaryGap:false, axisTick:{show:false}}),
         yAxis:T.val({color:T.tc,fontSize:10, formatter:v=>(v/1e12).toFixed(0)+'조'}, {min:0}),
         tooltip:{trigger:'axis', formatter(ps){const p=ps[0]; return esc(fundPeriodLabel(p.axisValue))+'<br/>'+t('기금 전체')+' '+fmtKrwJo(p.value);}},
@@ -776,9 +814,10 @@
         data:pct.map(row=>row[j]),
       }));
       if(echSeries[0]) echSeries[0].markArea=_fundEstMark(periods);  // 추정 구간 음영
-      _newChart(el).setOption({
+      _newChart(el, true).setOption({
         grid:{left:44,right:16,top:36,bottom:26},
         legend:T.legend({top:2, itemWidth:12, itemHeight:8, itemGap:10}),
+        dataZoom:_insideZoom(),
         xAxis:T.cat(periods, _fundAxisLabel(periods), {boundaryGap:false, axisTick:{show:false}}),
         yAxis:T.val({color:T.tc,fontSize:10, formatter:'{value}%'}, {min:0, max:100}),
         tooltip:{trigger:'axis', confine:true, formatter(ps){
