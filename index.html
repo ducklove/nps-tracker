@@ -21,17 +21,17 @@
 <meta name="theme-color" content="#2563eb">
 <link rel="icon" type="image/png" href="assets/icon-192.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="stylesheet" href="assets/app.css?v=9">
+<link rel="stylesheet" href="assets/app.css?v=10">
 <!-- 데이터는 app.js가 data.json(fetch) → data.js(script) 순으로 캐시버스팅 로드해
      iframe 임베드에서도 항상 최신을 보장한다. ECharts는 SRI 적용해 CDN에서 동적 로드.
      format.js(순수 유틸, 전역 NpsFormat)는 app.js보다 먼저 로드돼야 한다(defer 순서 계약). -->
-<script src="assets/format.js?v=9" defer></script>
-<script src="assets/app.js?v=9" defer></script>
+<script src="assets/format.js?v=10" defer></script>
+<script src="assets/app.js?v=10" defer></script>
 </head>
 <body>
 <div class="container">
   <header>
-    <h1 data-i18n>국민연금 국내주식 포트폴리오</h1>
+    <h1>국민연금 국내주식 포트폴리오</h1>
     <div class="meta">
       <span id="metaAsOf"></span>
       <span id="compBadge" class="comp-badge" style="display:none;"></span>
@@ -39,7 +39,7 @@
       <a class="hub-link" href="https://cantabile.tplinkdns.com:3691" rel="noopener">Value Compass ↗</a>
       <button id="themeToggle" type="button">다크 모드</button>
     </div>
-    <div class="source-note" id="sourceNote" data-i18n-html="source-note">
+    <div class="source-note" id="sourceNote">
       국민연금공단 국내주식 투자정보(공개 보유내역)를 일별 종가로 재평가한 추정치입니다.
       첫 스냅샷의 평가총액을 NAV 1000으로 고정하고, 이후 평가총액 변동만 NAV에 반영합니다.
       <a href="https://www.data.go.kr/data/3070507/fileData.do" target="_blank" rel="noopener noreferrer">원천 보기</a>
@@ -52,24 +52,24 @@
 
   <section class="pf-nav-chart-wrap" id="contribSection" style="display:none;">
     <div class="pf-nav-header">
-      <h3 data-i18n>오늘의 기여도</h3>
+      <h3>오늘의 기여도</h3>
       <div class="pf-sub" id="contribSub"></div>
     </div>
     <div class="contrib-grid">
-      <div class="contrib-col"><div class="contrib-col-title" data-i18n>상승 Top 5</div><div id="contribUp"></div></div>
-      <div class="contrib-col"><div class="contrib-col-title" data-i18n>하락 Top 5</div><div id="contribDown"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">상승 Top 5</div><div id="contribUp"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">하락 Top 5</div><div id="contribDown"></div></div>
     </div>
   </section>
 
   <section class="pf-nav-chart-wrap">
-    <div class="pf-nav-header"><h3 data-i18n>포트폴리오 구성 (평가액 상위 60)</h3></div>
+    <div class="pf-nav-header"><h3>포트폴리오 구성 (평가액 상위 60)</h3></div>
     <div id="npsTreemap" role="img" aria-label="평가액 상위 60종목 트리맵 차트 — 사각형 크기는 평가액, 색상은 일간 등락률"></div>
   </section>
 
   <section class="pf-nav-chart-wrap" id="sectorSection" style="display:none;">
     <div class="pf-nav-header">
-      <h3 data-i18n>섹터 분석</h3>
-      <div data-i18n class="pf-sub" id="sectorSub">KRX 업종분류 기준 · 평가액 가중</div>
+      <h3>섹터 분석</h3>
+      <div class="pf-sub" id="sectorSub">KRX 업종분류 기준 · 평가액 가중</div>
     </div>
     <div class="sector-list-card">
       <div id="sectorBars"></div>
@@ -78,7 +78,7 @@
 
   <section class="pf-nav-chart-wrap" id="intradaySection" style="display:none;">
     <div class="pf-nav-header">
-      <h3 data-i18n>연기금 장중 매매동향 (잠정)</h3>
+      <h3>연기금 장중 매매동향 (잠정)</h3>
       <div class="pf-sub" id="intradaySub"></div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsIntradayChart" role="img" aria-label="연기금 장중 누적 순매수 라인 차트 — 합계·KOSPI·KOSDAQ, 1분 간격 잠정 집계"></div></div>
@@ -87,15 +87,15 @@
   <section class="pf-nav-chart-wrap" id="pensionTradeSection" style="display:none;">
     <div class="pf-nav-header pf-flex-header">
       <div>
-        <h3 data-i18n>연기금 일별 매매동향</h3>
-        <div data-i18n class="pf-sub" id="pensionTradeSub">KOSPI+KOSDAQ 시장 기준</div>
+        <h3>연기금 일별 매매동향</h3>
+        <div class="pf-sub" id="pensionTradeSub">KOSPI+KOSDAQ 시장 기준</div>
       </div>
       <div class="pf-range" id="pensionTradeRange" role="group" aria-label="연기금 매매 기간 선택">
         <button type="button" data-range="1m">1M</button>
         <button type="button" data-range="3m">3M</button>
         <button type="button" data-range="6m">6M</button>
         <button type="button" data-range="ytd">YTD</button>
-        <button type="button" data-range="all" class="active" data-i18n>전체</button>
+        <button type="button" data-range="all" class="active">전체</button>
       </div>
     </div>
     <div class="pf-nav-chart-container pf-trade-chart-container"><div id="npsPensionTradeChart" role="img" aria-label="연기금 일별 매매동향 차트 — 일별 매수·매도 막대와 순매수 라인"></div></div>
@@ -104,13 +104,13 @@
 
   <section class="pf-nav-chart-wrap">
     <div class="pf-nav-header pf-flex-header">
-      <h3 data-i18n>NAV 추이 (vs KOSPI)</h3>
+      <h3>NAV 추이 (vs KOSPI)</h3>
       <div class="pf-range" id="navRange" role="group" aria-label="기간 선택">
         <button type="button" data-range="1m">1M</button>
         <button type="button" data-range="3m">3M</button>
         <button type="button" data-range="6m">6M</button>
         <button type="button" data-range="ytd">YTD</button>
-        <button type="button" data-range="all" class="active" data-i18n>전체</button>
+        <button type="button" data-range="all" class="active">전체</button>
       </div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsNavChart" role="img" aria-label="국민연금 국내주식 NAV와 KOSPI 비교 라인 차트 — 구간 시작 1000 기준 정규화"></div></div>
@@ -119,28 +119,28 @@
 
   <section class="pf-nav-chart-wrap" id="fundTotalSection">
     <div class="pf-nav-header">
-      <h3 data-i18n>국민연금 기금 규모</h3>
-      <div data-i18n class="pf-sub">금융부문 6대 자산군 합계(시가) · 2012~ 월별 · 음영=추정(공식 공표 시 자동 교체)</div>
+      <h3>국민연금 기금 규모</h3>
+      <div class="pf-sub">금융부문 6대 자산군 합계(시가) · 2012~ 월별 · 음영=추정(공식 공표 시 자동 교체)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundTotalChart" role="img" aria-label="국민연금 기금 전체 규모 월별 추이 라인 차트 — 2012년 이후, 시가 기준"></div></div>
   </section>
 
   <section class="pf-nav-chart-wrap" id="fundCompSection">
     <div class="pf-nav-header">
-      <h3 data-i18n>자산군별 비중 추이</h3>
-      <div data-i18n class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별 · 음영=추정(2026.3~)</div>
+      <h3>자산군별 비중 추이</h3>
+      <div class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별 · 음영=추정(2026.3~)</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundCompChart" role="img" aria-label="자산군별 비중 추이 누적 영역 차트 — 국내·해외 주식/채권, 대체투자, 단기자금"></div></div>
   </section>
 
   <section class="pf-nav-chart-wrap" id="fundPieSection">
-    <div class="pf-nav-header"><h3 data-i18n>현재 vs 목표 자산군 비중</h3><div data-i18n class="pf-sub" id="fundPieSub">최신 시점 기준</div></div>
+    <div class="pf-nav-header"><h3>현재 vs 목표 자산군 비중</h3><div class="pf-sub" id="fundPieSub">최신 시점 기준</div></div>
     <div class="pf-nav-chart-container"><div id="npsFundPieChart" role="img" aria-label="현재 대 목표 자산군 비중 가로 막대 차트 — 자산군별 편차 표시"></div></div>
   </section>
 
   <section class="pf-nav-chart-wrap" id="peerSection" style="display:none;">
     <div class="pf-nav-header">
-      <h3 data-i18n>연기금·공제회 비교</h3>
+      <h3>연기금·공제회 비교</h3>
       <div class="pf-sub" id="peerSub"></div>
     </div>
     <div class="sector-list-card">
@@ -151,19 +151,19 @@
 
   <section class="pf-nav-chart-wrap" id="yoySection" style="display:none;">
     <div class="pf-nav-header">
-      <h3 data-i18n>연말 구성 변화</h3>
+      <h3>연말 구성 변화</h3>
       <div class="pf-sub" id="yoySub"></div>
     </div>
     <div class="contrib-grid yoy-grid">
-      <div class="contrib-col"><div class="contrib-col-title" data-i18n>신규 편입</div><div id="yoyAdded"></div></div>
-      <div class="contrib-col"><div class="contrib-col-title" data-i18n>전량 매도</div><div id="yoyRemoved"></div></div>
-      <div class="contrib-col"><div class="contrib-col-title" data-i18n>수량 증감 상위</div><div id="yoyChanged"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">신규 편입</div><div id="yoyAdded"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">전량 매도</div><div id="yoyRemoved"></div></div>
+      <div class="contrib-col"><div class="contrib-col-title">수량 증감 상위</div><div id="yoyChanged"></div></div>
     </div>
   </section>
 
   <section class="pf-nav-chart-wrap">
     <div class="pf-nav-header pf-flex-header">
-      <h3 data-i18n>보유 종목</h3>
+      <h3>보유 종목</h3>
       <div class="pf-table-tools">
         <span id="searchCount" class="pf-search-count"></span>
         <input id="tableSearch" type="search" placeholder="종목명·코드 검색" autocomplete="off" aria-label="보유 종목 검색">
@@ -173,13 +173,13 @@
       <table class="pf-table" id="npsTable">
         <thead><tr>
           <th>#</th>
-          <th data-i18n class="pf-col-name pf-sortable" data-sort="name">종목명</th>
-          <th data-i18n class="pf-sortable" data-sort="change">등락률</th>
-          <th data-i18n>현재가</th>
-          <th data-i18n>추정수량</th>
-          <th data-i18n class="pf-sortable" data-sort="mv">평가금액</th>
-          <th data-i18n>비중</th>
-          <th data-i18n class="pf-sortable" data-sort="own">지분율</th>
+          <th class="pf-col-name pf-sortable" data-sort="name" tabindex="0" aria-sort="none">종목명</th>
+          <th class="pf-sortable" data-sort="change" tabindex="0" aria-sort="none">등락률</th>
+          <th>현재가</th>
+          <th>추정수량</th>
+          <th class="pf-sortable" data-sort="mv" tabindex="0" aria-sort="none">평가금액</th>
+          <th>비중</th>
+          <th class="pf-sortable" data-sort="own" tabindex="0" aria-sort="none">지분율</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -189,13 +189,13 @@
 
   <section class="pf-nav-chart-wrap" id="foreignSection" style="display:none;">
     <div class="pf-nav-header">
-      <h3 data-i18n>해외주식 보유 (연 1회 공시)</h3>
+      <h3>해외주식 보유 (연 1회 공시)</h3>
       <div class="pf-sub" id="foreignSub"></div>
     </div>
     <div class="pf-table-wrap">
       <table class="pf-table" id="foreignTable">
         <thead><tr>
-          <th>#</th><th data-i18n class="pf-col-name">종목명</th><th data-i18n>국가</th><th data-i18n>평가금액(공시일)</th><th data-i18n>비중(공시일)</th><th data-i18n>추정수량</th><th data-i18n>평가금액(현재)</th><th data-i18n>비중(현재)</th><th data-i18n>지분율</th>
+          <th>#</th><th class="pf-col-name">종목명</th><th>국가</th><th>평가금액(공시일)</th><th>비중(공시일)</th><th>추정수량</th><th>평가금액(현재)</th><th>비중(현재)</th><th>지분율</th>
         </tr></thead>
         <tbody></tbody>
       </table>

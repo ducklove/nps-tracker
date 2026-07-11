@@ -357,11 +357,18 @@
         } else { wrap.style.display='none'; }
       }
     }
+    /* 정렬 헤더: 클릭 + 키보드(Enter/Space). th는 columnheader role을 유지해야
+       aria-sort가 유효하므로 role="button"을 붙이지 않고 tabindex+keydown만 더한다.
+       renderTable()은 th 노드를 교체하지 않고 textContent만 갱신하므로 재렌더 후에도 포커스가 유지된다. */
     document.querySelectorAll('#npsTable th.pf-sortable').forEach(th=>{
-      th.addEventListener('click',()=>{
+      const applySort=()=>{
         const k=th.dataset.sort;
         if(_sortKey===k) _sortAsc=!_sortAsc; else { _sortKey=k; _sortAsc=(k==='name'); }
         renderTable();
+      };
+      th.addEventListener('click',applySort);
+      th.addEventListener('keydown',e=>{
+        if(e.key==='Enter'||e.key===' '||e.key==='Spacebar'){ e.preventDefault(); applySort(); }
       });
     });
     document.getElementById('loadAllBtn').addEventListener('click', async function(){

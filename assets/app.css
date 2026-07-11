@@ -146,6 +146,7 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 .pf-table td.pf-table-empty{text-align:center; color:var(--text-secondary); padding:18px 12px;}
 .pf-sortable{cursor:pointer; user-select:none;}
 .pf-sortable:hover{color:var(--text);}
+.pf-sortable:focus-visible{outline:2px solid var(--primary); outline-offset:-2px;}
 
 /* 테이블 검색 (F-3) */
 .pf-table-tools{display:flex; align-items:center; gap:8px;}
