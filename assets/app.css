@@ -22,20 +22,26 @@ header h1{font-size:22px; margin:0 0 6px;}
 #themeToggle{
   background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
   border-radius:8px; padding:5px 10px; cursor:pointer; font-size:12px;
+  position:relative;
 }
+#themeToggle::after{content:""; position:absolute; left:-2px; right:-2px; top:-5px; bottom:-5px;}
 #themeToggle:hover{color:var(--text);}
-/* 허브(Value Compass) 백링크 — 터치 타겟 확보(min-height 32px), embed(iframe)에서는 숨김 */
+/* 허브(Value Compass) 백링크 — 터치 타겟 확보(의사요소로 40px 근접), embed(iframe)에서는 숨김 */
 .hub-link{
   display:inline-flex; align-items:center; min-height:32px; padding:5px 8px;
   color:var(--text-secondary); font-size:12px; text-decoration:none; border-radius:8px;
+  position:relative;
 }
+.hub-link::after{content:""; position:absolute; left:0; right:0; top:-4px; bottom:-4px;}
 .hub-link:hover{color:var(--primary);}
 body.embed .hub-link{display:none;}
 .source-note{
   margin:14px 0 22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
   background:var(--surface-muted); color:var(--text-secondary); font-size:12px; line-height:1.55;
 }
-.source-note a{color:var(--primary); text-decoration:none;}
+/* 본문 내 링크 — padding+음수 margin으로 레이아웃 변화 없이 히트 영역만 40px 근접 확장 */
+.source-note a{color:var(--primary); text-decoration:none; display:inline-block; padding:11px 6px; margin:-11px -6px;}
+.pf-footer a{display:inline-block; padding:11px 6px; margin:-11px -6px;}
 
 /* 데이터 경고 배너 (amber) — embed 모드에서도 표시(컴팩트) */
 .warn-banner{
@@ -81,12 +87,14 @@ body.embed .warn-banner{margin:0 0 12px; padding:6px 10px; font-size:11px;}
 /* 섹션 헤더 우측 도구(기간 선택·검색) */
 .pf-flex-header{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
 
-/* NAV 기간 선택 (F-2) */
+/* NAV 기간 선택 (F-2) — 시각 크기(≈26px)는 유지, 의사요소로 히트 영역만 40px 근접 확장 */
 .pf-range{display:flex; gap:4px;}
 .pf-range button{
   background:var(--surface); color:var(--text-secondary); border:1px solid var(--border);
   border-radius:8px; padding:3px 9px; cursor:pointer; font-size:12px;
+  position:relative;
 }
+.pf-range button::after{content:""; position:absolute; left:-2px; right:-2px; top:-7px; bottom:-7px;}
 .pf-range button:hover{color:var(--text);}
 .pf-range button.active{color:var(--primary); border-color:var(--primary); font-weight:600;}
 
@@ -169,3 +177,15 @@ body.embed .container{padding-top:16px; max-width:none;}
 .peer-key i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px;}
 .peer-key-note{margin-left:auto;}
 @media (max-width:560px){ .peer-stack{display:none;} .peer-key,.peer-key-note{display:none;} }
+
+/* 태블릿(≤768px): 그리드·테이블 밀도 조정 — 기존 560px 규칙의 중간 단계.
+   560px 블록과 선택자가 겹치지 않게 유지(겹치면 뒤에 오는 이 블록이 폰 규칙을 덮는다). */
+@media (max-width:768px){
+  .pf-summary{grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px;}
+  .pf-summary-card{padding:14px;}
+  .contrib-grid{grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px;}
+  /* 테이블: 가로 패딩을 줄여 밀도 확보, 세로 패딩은 유지·확대해 정렬 헤더 터치 타겟(≈40px+) 보존 */
+  .pf-table thead th{padding:12px 8px;}
+  .pf-table td{padding:9px 8px;}
+  #tableSearch{width:150px;}
+}

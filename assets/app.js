@@ -195,7 +195,8 @@
           Math.max(2,(s.weightPct||0)/maxW*100).toFixed(1)+'%"></span></span>'+
         '<span class="sector-w">'+(s.weightPct!=null?s.weightPct.toFixed(1)+'%':'-')+'</span>'+
         '<span class="sector-chg '+pctClass(s.changePct)+'">'+fmtPct(s.changePct)+'</span>'+
-        '<span class="sector-contrib" title="'+t('포트폴리오 일간 기여도')+'">'+
+        '<span class="sector-contrib" title="'+t('포트폴리오 일간 기여도')+'" aria-label="'+
+          t('포트폴리오 일간 기여도')+' '+(s.contribPct!=null?fmtPct(s.contribPct)+'p':'-')+'">'+
           (s.contribPct!=null?fmtPct(s.contribPct)+'p':'-')+'</span>'+
       '</div>';
       let html=top.map(row).join('');
@@ -229,19 +230,22 @@
         ];
         if(f.returnPct!=null) tipParts.push(tt('{y}년 수익률 {r}%', {y:f.returnYear||'-', r:f.returnPct})+(f.returnNote?' ('+f.returnNote+')':''));
         const alloc=f.allocation;
+        const allocTxt=alloc ? esc(A.map(a=>a[1]+' '+(alloc[a[0]]!=null?alloc[a[0]]+'%':'-')).join(' · ')) : '';
         const stack=alloc
-          ? '<span class="peer-stack" title="'+esc(A.map(a=>a[1]+' '+(alloc[a[0]]!=null?alloc[a[0]]+'%':'-')).join(' · '))+'">'+
+          ? '<span class="peer-stack" role="img" title="'+allocTxt+'" aria-label="'+t('자산배분')+' '+allocTxt+'">'+
               A.map(a=>{ const v=alloc[a[0]]; return v>0?'<span style="width:'+v+'%;background:'+a[2]+'"></span>':''; }).join('')+
             '</span>'
           : '<span class="peer-stack peer-stack-none">-</span>';
-        return '<div class="sector-row peer-row" title="'+esc(tipParts.join(' · '))+'">'+
+        const tipTxt=esc(tipParts.join(' · '));
+        const retTip=f.returnPct!=null?esc((f.returnYear||'')+'년 수익률'+(f.returnNote?' · '+f.returnNote:'')):'';
+        return '<div class="sector-row peer-row" title="'+tipTxt+'" aria-label="'+tipTxt+'">'+
           '<span class="sector-name peer-name">'+esc(f.name)+
             (f.kind==='공제회'?' <em>'+t('공제회')+'</em>':'')+'</span>'+
           '<span class="contrib-track sector-track"><span class="sector-bar" style="width:'+
             Math.max(1.5, f.total/maxT*100).toFixed(1)+'%"></span></span>'+
           '<span class="sector-w peer-total">'+fmtKrwJo(f.total)+'</span>'+
-          '<span class="sector-chg '+(f.returnPct!=null?pctClass(f.returnPct):'')+'" title="'+
-            (f.returnPct!=null?esc((f.returnYear||'')+'년 수익률'+(f.returnNote?' · '+f.returnNote:'')):'')+'">'+
+          '<span class="sector-chg '+(f.returnPct!=null?pctClass(f.returnPct):'')+'" title="'+retTip+'"'+
+            (retTip?' aria-label="'+retTip+' '+fmtPct(f.returnPct)+'"':'')+'>'+
             (f.returnPct!=null?fmtPct(f.returnPct):'-')+'</span>'+
           stack+
         '</div>';
@@ -265,7 +269,8 @@
       const y=DATA.yoy;
       if(!y || !y.from || !y.to) return;
       const none='<div class="contrib-none">'+t('없음')+'</div>';
-      const li=(name,right,cls,tip)=>'<div class="contrib-row yoy-row" '+(tip?'title="'+esc(tip)+'"':'')+'>'+
+      const li=(name,right,cls,tip)=>'<div class="contrib-row yoy-row" '+
+        (tip?'title="'+esc(tip)+'" aria-label="'+esc(name)+' · '+esc(tip)+'"':'')+'>'+
         '<span class="contrib-name yoy-name">'+esc(name)+'</span>'+
         '<span class="yoy-val '+(cls||'')+'">'+right+'</span></div>';
       const added=(y.added||[]).map(h=>li(h.stock_name||h.stock_code,
@@ -339,7 +344,9 @@
       if(cnt) cnt.textContent = q ? rows.length+' / '+all.length : '';
       document.querySelectorAll('#npsTable th.pf-sortable').forEach(th=>{
         const base=th.textContent.replace(/[▲▼]/g,'').trim();
-        th.textContent = th.dataset.sort===_sortKey ? base+(_sortAsc?' ▲':' ▼') : base;
+        const active=th.dataset.sort===_sortKey;
+        th.textContent = active ? base+(_sortAsc?' ▲':' ▼') : base;
+        th.setAttribute('aria-sort', active ? (_sortAsc?'ascending':'descending') : 'none');
       });
       const wrap=document.querySelector('.load-all-wrap');
       const total=DATA.holdingsTotal || _holdings().length;
