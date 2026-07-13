@@ -84,9 +84,11 @@ def fetch_market(token: str, app_key: str, app_secret: str, spec: dict) -> dict 
         "appkey": app_key, "appsecret": app_secret,
         "tr_id": TR_ID, "custtype": "P",
     }
+    # FID_INPUT_ISCD=시장구분(KSP/KSQ), FID_INPUT_ISCD_2=업종코드(0001/1001) — 순서가 바뀌면
+    # KIS가 오류 대신 rt_cd=0에 전 필드 0을 반환해 '휴장'으로 오판되므로 주의.
     payload = _request_json("GET", f"{BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-investor-time-by-market",
                             headers=headers,
-                            query={"FID_INPUT_ISCD": spec["symbol"], "FID_INPUT_ISCD_2": spec["market"]})
+                            query={"FID_INPUT_ISCD": spec["market"], "FID_INPUT_ISCD_2": spec["symbol"]})
     if payload.get("rt_cd") not in (None, "0", 0):
         log(f"{spec['name']} 응답 오류: {payload.get('msg1')}")
         return None
