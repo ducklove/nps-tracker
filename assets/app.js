@@ -624,7 +624,9 @@
        pi-worker 수집기(1분 폴링, KIS 시세성 잠정 집계)가 서빙하는 intraday.json을 표시.
        date가 오늘(KST)이 아니거나 비어 있으면 섹션 숨김(휴장일·수집기 다운 시 자동 강등).
        잠정치는 장 마감 후 확정 일별 데이터로 대체된다. */
-    const INTRADAY_URL='https://cantabile.tplinkdns.com/nps/intraday.json';
+    // :3358 경유 — 443은 2026-07-13부터 외부 Traefik 호스트로 포워딩이 넘어가 TLS가 깨진 상태
+    // (라우터/신규 호스트 정리 후 443 복구되면 포트 없는 URL로 되돌려도 됨. 서버는 둘 다 서빙).
+    const INTRADAY_URL='https://cantabile.tplinkdns.com:3358/nps/intraday.json';
     let _intraday=null;
     function _kstClock(){
       const p=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',
