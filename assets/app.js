@@ -660,7 +660,11 @@
       /* 1분 자동 갱신이 차트를 재생성하므로, 사용자가 줌 중이면 줌 창(%)을 이어받는다 */
       const keepZoom=_currentZoom(el);
       const T=_chartTheme();
-      _newChart(el, true).setOption({
+      const ch=_newChart(el, true);
+      // 섹션을 방금 unhide한 프레임에는 컨테이너 폭이 0으로 측정될 수 있어(캔버스 2px 실측)
+      // 레이아웃 확정 후 한 번 리사이즈한다.
+      requestAnimationFrame(()=>{ try{ ch.resize(); }catch(e){} });
+      ch.setOption({
         grid:{left:64,right:16,top:30,bottom:24},
         legend:T.legend({top:0, data:[t('합계'),'KOSPI','KOSDAQ']}),
         dataZoom:_insideZoom(keepZoom),
