@@ -944,6 +944,25 @@
     // 장중 잠정 매매: 최초 1회 + 장중(08:55~15:45 KST)에는 1분마다 갱신(탭이 보일 때만)
     _echartsReady.then(loadIntraday, ()=>{});
     setInterval(()=>{ if(_intradayLive() && document.visibilityState==='visible') loadIntraday(); }, 60000);
+    /* 신선도 워치독 — 허브(도구 화면) 등에 오래 열려 있는 탭/iframe은 로드 시점 스냅샷에
+       얼어붙는다(일별 차트는 로드 시 1회만 그림). 탭이 다시 보일 때(bfcache 복원 포함)와
+       15분 주기로 발행물 lastUpdated를 확인해 갱신됐으면 리로드한다(1회성 — 새 스냅샷의
+       lastUpdated가 로드값이 되므로 루프 없음). 실패는 무시(오프라인 등). */
+    let _freshLast=0;
+    function _checkFresh(){
+      const now=Date.now();
+      if(now-_freshLast<60000) return;
+      _freshLast=now;
+      fetch('data.json?t='+now,{cache:'no-store'})
+        .then(r=>r.ok?r.json():null)
+        .then(d=>{
+          if(d && d.lastUpdated && DATA.lastUpdated && d.lastUpdated!==DATA.lastUpdated) location.reload();
+        })
+        .catch(()=>{});
+    }
+    document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') _checkFresh(); });
+    window.addEventListener('pageshow',e=>{ if(e.persisted) _checkFresh(); });
+    setInterval(()=>{ if(document.visibilityState==='visible') _checkFresh(); }, 900000);
     window.addEventListener('resize',()=>_charts.forEach(c=>c.resize()));
   }
 
