@@ -393,10 +393,23 @@
 
     /* ---------- 차트 ---------- */
     let _charts=[];
+    /* 컨테이너 크기 변화 자가 치유 — 초기화 순간 레이아웃 경합(백그라운드 탭 로드,
+       세션 복원 등)으로 크기를 오측하면 ECharts는 그 캔버스 크기로 고정되고 창 resize
+       전까지 복구되지 않는다(기간 버튼을 눌러야 정상화되던 증상). 관찰 대상 el의
+       크기는 CSS가 결정하고 canvas는 자식이라 관찰 루프는 생기지 않는다. */
+    const _chartRO=(typeof ResizeObserver!=='undefined') ? new ResizeObserver(entries=>{
+      entries.forEach(en=>{
+        const c=echarts.getInstanceByDom(en.target);
+        if(c && !c.isDisposed()) c.resize();
+      });
+    }) : null;
     function _newChart(el, zoomable){
       const prev=echarts.getInstanceByDom(el);              // 개별 재렌더(기간 선택) 시 기존 인스턴스 정리
       if(prev){ prev.dispose(); _charts=_charts.filter(c=>c!==prev); }
       const c=echarts.init(el); _charts.push(c);
+      /* unobserve→observe로 초기 발화를 강제 재큐잉 — 이미 관찰 중인 el은 재생성돼도
+         크기가 같으면 콜백이 오지 않아, 숨김 중 재생성된 차트가 복구되지 않는다. */
+      if(_chartRO){ _chartRO.unobserve(el); _chartRO.observe(el); }
       if(zoomable){   // F-18: 더블클릭(모바일 더블탭)=줌 전체 구간 리셋
         c.getZr().on('dblclick', ()=>c.dispatchAction({type:'dataZoom', start:0, end:100}));
       }
