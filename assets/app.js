@@ -417,15 +417,16 @@
     }
 
     /* ---------- 시계열 인사이드 줌 (F-18) ----------
-       휠·핀치=줌, 드래그=팬. 트리맵·현재vs목표(비시계열)는 제외.
+       핀치=줌, 드래그=팬. 트리맵·현재vs목표(비시계열)는 제외.
        - preventDefaultMouseMove:false — 차트 위 세로 스와이프의 기본 스크롤을 막지 않아
          모바일 페이지 스크롤과 공존(팬은 가로 이동 성분만 반영되므로 충돌 없음).
-       - moveOnMouseWheel:false — 휠은 줌 전용(휠 팬과 페이지 스크롤 혼동 방지).
+       - zoomOnMouseWheel:false / moveOnMouseWheel:false — 휠은 차트가 전혀 가로채지 않는다.
+         휠 줌이 페이지 스크롤을 방해해 제거(데스크톱 구간 조절은 기간 버튼이 담당).
        - 기간 버튼은 차트를 dispose 후 재생성(_newChart)하므로 줌은 자동 리셋.
        - keep: 인트라데이 1분 자동 갱신처럼 재렌더 간 줌 창(start/end %)을 유지할 때 전달. */
     function _insideZoom(keep){
       return [Object.assign({
-        type:'inside', xAxisIndex:0, zoomOnMouseWheel:true,
+        type:'inside', xAxisIndex:0, zoomOnMouseWheel:false,
         moveOnMouseMove:true, moveOnMouseWheel:false, preventDefaultMouseMove:false,
       }, keep||{})];
     }

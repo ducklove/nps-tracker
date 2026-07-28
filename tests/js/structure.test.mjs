@@ -54,10 +54,11 @@ test('index.html: ECharts preload가 app.js의 CDN URL·SRI 상수와 일치', (
 });
 
 // F-18: 시계열 차트 인사이드 줌 — 모바일 세로 스크롤 보존(preventDefaultMouseMove:false)과
-// 휠 줌 전용(moveOnMouseWheel:false)이 계약. 옵션이 사라지면 모바일 스크롤이 죽는다.
+// 휠 무개입(zoom/move 모두 false)이 계약. 휠을 가로채면 페이지 스크롤이 방해받는다.
 test('app.js: 시계열 인사이드 줌 계약(F-18) — inside·스크롤 보존 옵션', () => {
   assert.ok(appJs.includes("type:'inside'"), 'dataZoom inside 누락');
   assert.ok(appJs.includes('preventDefaultMouseMove:false'), '모바일 세로 스크롤 보존 옵션 누락');
-  assert.ok(appJs.includes('moveOnMouseWheel:false'), '휠 줌 전용 옵션 누락');
+  assert.ok(appJs.includes('zoomOnMouseWheel:false'), '휠 줌 비활성 옵션 누락');
+  assert.ok(appJs.includes('moveOnMouseWheel:false'), '휠 팬 비활성 옵션 누락');
   assert.ok(appJs.includes("dispatchAction({type:'dataZoom', start:0, end:100})"), '더블클릭 줌 리셋 누락');
 });
