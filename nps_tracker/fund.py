@@ -14,6 +14,7 @@ from .io_utils import _read_json, _write_json
 from .sources.datago import fetch_fund_portfolio
 from .sources.kosis import fetch_kosis_fund_monthly
 from .sources.market import _fetch_market_monthly
+from .sources.npsfund import fetch_nps_fund_monthly
 from .sources.sheet import fetch_sheet_fund
 
 logger = logging.getLogger("nps")
@@ -109,10 +110,11 @@ def estimate_recent_months(series_map: dict[str, dict], nav_hist: list[dict] | N
 
 
 def get_fund_portfolio(nav_hist: list[dict] | None = None) -> dict | None:
-    """기금 부문별 평가액 월별 시계열. 우선순위: 시트(공표) > data.go.kr > KOSIS(2012~2024) > seed,
-    끝에 추정(마지막 공표월+1 ~ 현재월) 부가. 전체(total)는 6대 금융부문 합으로 통일.
+    """기금 부문별 평가액 월별 시계열. 우선순위: 시트(공표) > 기금운용본부 월간 공시 >
+    data.go.kr > KOSIS(2012~2024) > seed, 끝에 추정(마지막 공표월+1 ~ 현재월) 부가.
+    전체(total)는 6대 금융부문 합으로 통일.
 
-    공표가 나오면 시트가 덮어 추정을 교체한다. seed에는 확정값만 영속(추정 제외).
+    공표가 나오면 공시/시트가 덮어 추정을 교체한다. seed에는 확정값만 영속(추정 제외).
     """
     series_map: dict[str, dict] = {}
     # ⓪ seed 베이스(과거 보존). 과거 추정 잔재는 제거하고 받는다.
@@ -138,7 +140,14 @@ def get_fund_portfolio(nav_hist: list[dict] | None = None) -> dict | None:
                 series_map[s["period"]] = s
     except Exception as exc:
         logger.warning("기금 포트폴리오(data.go.kr) 수집 실패: %s", exc)
-    # ③ Google Sheet 공표값 — 최우선(사용자 SSOT)
+    # ③ 기금운용본부 월간 공시 — 공표 원본(파생 소스보다 최신월이 빠름). 이미 확정값이 있는 월은 건너뛴다.
+    try:
+        known = {p for p, s in series_map.items() if not s.get("estimated")}
+        for s in fetch_nps_fund_monthly(known) or []:
+            series_map[s["period"]] = s
+    except Exception as exc:
+        logger.warning("기금운용본부 월간 공시 수집 실패: %s", exc)
+    # ④ Google Sheet 공표값 — 최우선(사용자 SSOT: 공시 수치를 손으로 교정할 수 있는 마지막 관문)
     try:
         sheet = fetch_sheet_fund()
         if sheet:
@@ -150,11 +159,11 @@ def get_fund_portfolio(nav_hist: list[dict] | None = None) -> dict | None:
     if not series_map:
         logger.warning("기금 포트폴리오 데이터 없음")
         return None
-    # ④ 추정(마지막 공표월 다음 ~ 현재월)
+    # ⑤ 추정(마지막 공표월 다음 ~ 현재월)
     today = date.today()
     for s in estimate_recent_months(series_map, nav_hist, f"{today.year}-{today.month:02d}"):
         series_map[s["period"]] = s
-    # ⑤ total = 6대 부문 합으로 통일 + 정렬
+    # ⑥ total = 6대 부문 합으로 통일 + 정렬
     series = []
     for p in sorted(series_map):
         s = series_map[p]

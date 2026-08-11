@@ -22,7 +22,11 @@
   평가액 상위 400종목) — 섹터별 비중·등락·기여도 집계, 30일 캐시(미커밋)
 - **해외주식**: 「국민연금공단 해외주식 투자정보」(연 1회, 10억원↑) — 티커가 없어 일별
   재평가 없이 정적 스냅샷 탭으로만 노출. 클라우드 차단 시 `data/seed_foreign_holdings.json` 폴백
-- **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > data.go.kr > KOSIS > seed + 최근월 추정
+- **기금 자산군 시계열**: Google Sheet(공표 확정값 SSOT) > 기금운용본부 월간 공시 > data.go.kr >
+  KOSIS > seed + 최근월 추정. 최신 공표월은 기금운용본부 「기금공시 > 월간 공시」의
+  '자산군별 포트폴리오 운용 현황 및 수익률' 첨부 xlsx에서 받는다(무인증, 새 공표월만 다운로드).
+  파생 소스는 공표를 수개월 늦게 따라온다 — 2026-08 기준 공시 2026-05, data.go.kr 2026-02,
+  KOSIS는 2024-12에서 정지. 2026-02·03을 세 소스로 교차검증한 결과 반올림 오차 내 일치.
 - **연기금·공제회 비교(F-15)**: 공무원·사학연금, 교직원·행정·군인공제회의 규모·자산배분·수익률을
   `data/seed_peer_funds.json`(수동 갱신, 출처 포함)으로 비교. 국민연금은 본 대시보드 최신값.
   타 기관은 종목 공시가 없거나 상위 5개뿐이라 종목 단위 추적은 국민연금 전용.
@@ -34,7 +38,7 @@
 | --- | --- |
 | `fetch_data.py` | 실행 진입점(thin wrapper) — `python fetch_data.py [--limit N] [--until D] [--no-public] [--refresh-prices]` |
 | `update_and_push.py` | **로컬 원클릭 발행**: pull → fetch_data.py → 데이터 산출물만 커밋 → push(→ Actions 자동 배포). 추가 인자는 fetch_data.py로 전달 |
-| `nps_tracker/` | 파이프라인 패키지: `config`(상수·임계값) · `sources/`(소스별 수집: datago/fnguide/dart/kosis/sheet/market/sector) · `resolver` · `nav` · `fund` · `archive`(연말 스냅샷·YoY) · `validate`(발행 전 검증 게이트) · `publish` · `cli` |
+| `nps_tracker/` | 파이프라인 패키지: `config`(상수·임계값) · `sources/`(소스별 수집: datago/fnguide/dart/kosis/npsfund/sheet/market/sector) · `resolver` · `nav` · `fund` · `archive`(연말 스냅샷·YoY) · `validate`(발행 전 검증 게이트) · `publish` · `cli` |
 | `index.html` + `assets/` | 정적 대시보드(ECharts, 한국어 고정). `data.json` fetch → `data.js` 폴백(file:// 호환). PWA 매니페스트·아이콘, OG 카드(`og-image.png`, 일배치 갱신) |
 | `docs/embed.md` | 임베드·JSON 소비 계약(스키마 버전 정책, iframe 파라미터) |
 | `data.js` / `data.json` | 차트 데이터(동일 객체, 자동 생성). `data.js`는 구형 임베드·로컬 열람 호환용 |

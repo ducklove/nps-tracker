@@ -72,6 +72,25 @@ KOSIS_FUND_URL = (
     "&apiKey={key}&itmId=H001+&objL1=ALL&objL2=ALL&objL3=&objL4=&objL5=&objL6=&objL7=&objL8="
     "&format=json&jsonVD=Y&prdSe=M&newEstPrdCnt=1200&orgId=322&tblId=DT_32202_B095"
 )
+# 기금운용본부 「기금공시 > 월간 공시」 — 자산군별 포트폴리오 운용 현황 및 수익률(월 1건, xlsx 첨부).
+# 공표 원본이라 data.go.kr(2개월 지연)·KOSIS(2024-12에서 정지)보다 앞선 최신월을 얻는 유일한 자동 경로.
+# 목록(cat=MON) → 상세(tmpltdataSn) → 첨부 xlsx 순으로 3단계. 상세·다운로드 모두 GET·무인증.
+NPS_FUND_LIST_URL = "https://fund.nps.or.kr/impa/edwmpblnt/getOHEF0001M0.do?cat=MON"
+NPS_FUND_DETAIL_URL = "https://fund.nps.or.kr/impa/edwmpblnt/getOHEF0006M0.do?tmpltdataSn={sn}&cat=MON"
+NPS_FUND_FILE_URL = "https://fund.nps.or.kr/fileDown.do?atchFileId={file_id}&atchFileSn={file_sn}"
+# 게시글 제목: "자산군별 포트폴리오 운용 현황 및 수익률(2026.5월)" — 같은 목록의 「조성·지출·적립 현황」 제외.
+_NPS_FUND_TITLE_RE = re.compile(r"자산군별\s*포트폴리오\s*운용\s*현황[^(]*\((\d{4})\.\s*(\d{1,2})월\)")
+_NPS_FUND_DETAIL_SN_RE = re.compile(r"fnc_goBbsDetail\('(\d+)'\)")
+# 상세 페이지 첨부: fncAtchFileDownload('FL26002797', '1') — 1번이 xlsx, 2번은 설명 PDF.
+_NPS_FUND_FILE_RE = re.compile(r"fncAtchFileDownload\('([^']+)',\s*'(\d+)'\)")
+# xlsx A열 구분명(들여쓰기 공백 포함) → 표준 자산군 키. B열 '현황(말잔)'이 그 달 말 평가액(십억원).
+_NPS_FUND_ROW_MAP = {
+    "국내주식": "domestic_stock", "해외주식": "foreign_stock", "국내채권": "domestic_bond",
+    "해외채권": "foreign_bond", "대체투자": "alternative", "단기자금": "short_term",
+}
+# 한 배치에서 새로 받을 공표월 수 상한(정상 운영 시 월 1건). 초기 구축·장기 중단 시 과도한 다운로드 방지.
+NPS_FUND_MAX_FETCH = int(os.environ.get("NPS_FUND_MAX_FETCH", "3"))
+
 # Google Sheet(사용자 공표 월별 금융부문, 억원) — 공표 확정값의 단일 출처. 공개 링크 CSV export.
 GOOGLE_SHEET_ID = "1FtupuMVam7otVoerKS0r6fUNDWNhzM7GQVQPZUdPZtc"
 GOOGLE_SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=csv"
