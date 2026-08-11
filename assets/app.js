@@ -752,7 +752,11 @@
         btn.addEventListener('click',()=>{
           // 같은 버튼 재클릭도 재렌더 — 인사이드 줌(F-18) 리셋 수단을 겸한다
           _navRange=btn.dataset.range;
-          _rangeWrap.querySelectorAll('button[data-range]').forEach(b=>b.classList.toggle('active', b===btn));
+          _rangeWrap.querySelectorAll('button[data-range]').forEach(b=>{
+            const active=b===btn;
+            b.classList.toggle('active',active);
+            b.setAttribute('aria-pressed',String(active));
+          });
           if(typeof echarts!=='undefined'){ renderNavWithKospi(); }
         });
       });
@@ -763,7 +767,11 @@
         btn.addEventListener('click',()=>{
           // 같은 버튼 재클릭도 재렌더 — 인사이드 줌(F-18) 리셋 수단을 겸한다
           _pensionTradeRange=btn.dataset.range;
-          _pensionTradeRangeWrap.querySelectorAll('button[data-range]').forEach(b=>b.classList.toggle('active', b===btn));
+          _pensionTradeRangeWrap.querySelectorAll('button[data-range]').forEach(b=>{
+            const active=b===btn;
+            b.classList.toggle('active',active);
+            b.setAttribute('aria-pressed',String(active));
+          });
           if(typeof echarts!=='undefined'){ renderPensionTradeChart(); }
         });
       });
@@ -823,6 +831,13 @@
       const series=_fundSeries();  // 전체(공표 + 추정), 추정 구간은 음영으로 구분
       if(!series){ if(sec)sec.style.display='none'; return; }
       if(sec)sec.style.display='';
+      // 추정 시작월은 공표 진행에 따라 매 배치 바뀌므로 부제를 데이터에서 만든다(하드코딩 금지).
+      const sub=document.getElementById('fundCompSub');
+      const ef=(DATA.fundPortfolio||{}).estimatedFrom;
+      if(sub){
+        const base=t('금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별');
+        sub.textContent=ef? base+tt(' · 음영=추정({p}~)', {p:ef.slice(0,4)+'.'+(+ef.slice(5,7))}) : base;
+      }
       const periods=series.map(s=>s.period);
       const amt=series.map(s=>FUND_SECTORS.map(se=> s[se.key]||0));
       const pct=series.map((s,i)=>{ const t=s.total || amt[i].reduce((a,b)=>a+b,0); return amt[i].map(v=> t? +(v/t*100).toFixed(2):0); });

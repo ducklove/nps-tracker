@@ -62,3 +62,20 @@ test('app.js: 시계열 인사이드 줌 계약(F-18) — inside·스크롤 보�
   assert.ok(appJs.includes('moveOnMouseWheel:false'), '휠 팬 비활성 옵션 누락');
   assert.ok(appJs.includes("dispatchAction({type:'dataZoom', start:0, end:100})"), '더블클릭 줌 리셋 누락');
 });
+
+// 추정 시작월은 공표가 진행되면 매 배치 바뀐다. 부제에 연월을 하드코딩하면 데이터와 어긋난
+// 채로 남으므로(2026-08 실사례), 정적 문구 금지 + estimatedFrom 기반 렌더를 계약으로 고정한다.
+test('자산군별 비중 추이 부제: 연월 하드코딩 금지 · estimatedFrom으로 렌더', () => {
+  const sub = /<div class="pf-sub" id="fundCompSub">([^<]*)<\/div>/.exec(html);
+  assert.ok(sub, 'index.html에 #fundCompSub 부제 누락');
+  assert.doesNotMatch(sub[1], /\d{4}\s*[.\-]\s*\d{1,2}/, '부제에 고정 연월이 하드코딩됨: ' + sub[1]);
+  assert.ok(appJs.includes("getElementById('fundCompSub')"), 'app.js가 부제를 채우지 않음');
+  assert.ok(appJs.includes('음영=추정({p}~)'), 'estimatedFrom 기반 추정 구간 문구 누락');
+});
+
+test('기간 선택 상태·공시 기준 고지·모션 축소 접근성 계약', () => {
+  assert.match(html, /data-range="all" class="active" aria-pressed="true"/);
+  assert.ok(appJs.includes("setAttribute('aria-pressed',String(active))"));
+  assert.ok(html.includes('실제 현재 보유내역이 아닙니다'));
+  assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'));
+});

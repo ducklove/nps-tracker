@@ -21,7 +21,7 @@
 <meta name="theme-color" content="#2563eb">
 <link rel="icon" type="image/png" href="assets/icon-192.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="stylesheet" href="assets/app.css?v=14">
+<link rel="stylesheet" href="assets/app.css?v=15">
 <!-- 데이터는 app.js가 data.json(fetch) → data.js(script) 순으로 캐시버스팅 로드해
      iframe 임베드에서도 항상 최신을 보장한다. ECharts는 첫 페인트를 막지 않도록
      app.js가 CDN에서 동적 로드(SRI)하고, 아래 preload는 다운로드만 미리 시작한다.
@@ -30,8 +30,8 @@
      못 쓰므로 full 빌드 유지.
      format.js(순수 유틸, 전역 NpsFormat)는 app.js보다 먼저 로드돼야 한다(defer 순서 계약). -->
 <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous">
-<script src="assets/format.js?v=14" defer></script>
-<script src="assets/app.js?v=14" defer></script>
+<script src="assets/format.js?v=15" defer></script>
+<script src="assets/app.js?v=15" defer></script>
 </head>
 <body>
 <div class="container">
@@ -45,7 +45,8 @@
       <button id="themeToggle" type="button">다크 모드</button>
     </div>
     <div class="source-note" id="sourceNote">
-      국민연금공단 국내주식 투자정보(공개 보유내역)를 일별 종가로 재평가한 추정치입니다.
+      보유 구성은 국민연금공단의 최신 공개 공시 시점 기준이며 실제 현재 보유내역이 아닙니다.
+      공개 보유내역을 최신 일별 종가로 재평가한 추정치입니다.
       첫 스냅샷의 평가총액을 NAV 1000으로 고정하고, 이후 평가총액 변동만 NAV에 반영합니다.
       <a href="https://www.data.go.kr/data/3070507/fileData.do" target="_blank" rel="noopener noreferrer">원천 보기</a>
     </div>
@@ -96,11 +97,11 @@
         <div class="pf-sub" id="pensionTradeSub">KOSPI+KOSDAQ 시장 기준</div>
       </div>
       <div class="pf-range" id="pensionTradeRange" role="group" aria-label="연기금 매매 기간 선택">
-        <button type="button" data-range="1m">1M</button>
-        <button type="button" data-range="3m">3M</button>
-        <button type="button" data-range="6m">6M</button>
-        <button type="button" data-range="ytd">YTD</button>
-        <button type="button" data-range="all" class="active">전체</button>
+        <button type="button" data-range="1m" aria-pressed="false">1M</button>
+        <button type="button" data-range="3m" aria-pressed="false">3M</button>
+        <button type="button" data-range="6m" aria-pressed="false">6M</button>
+        <button type="button" data-range="ytd" aria-pressed="false">YTD</button>
+        <button type="button" data-range="all" class="active" aria-pressed="true">전체</button>
       </div>
     </div>
     <div class="pf-nav-chart-container pf-trade-chart-container"><div id="npsPensionTradeChart" role="img" aria-label="연기금 일별 매매동향 차트 — 일별 매수·매도 막대와 순매수 라인"></div></div>
@@ -111,11 +112,11 @@
     <div class="pf-nav-header pf-flex-header">
       <h3>NAV 추이 (vs KOSPI)</h3>
       <div class="pf-range" id="navRange" role="group" aria-label="기간 선택">
-        <button type="button" data-range="1m">1M</button>
-        <button type="button" data-range="3m">3M</button>
-        <button type="button" data-range="6m">6M</button>
-        <button type="button" data-range="ytd">YTD</button>
-        <button type="button" data-range="all" class="active">전체</button>
+        <button type="button" data-range="1m" aria-pressed="false">1M</button>
+        <button type="button" data-range="3m" aria-pressed="false">3M</button>
+        <button type="button" data-range="6m" aria-pressed="false">6M</button>
+        <button type="button" data-range="ytd" aria-pressed="false">YTD</button>
+        <button type="button" data-range="all" class="active" aria-pressed="true">전체</button>
       </div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsNavChart" role="img" aria-label="국민연금 국내주식 NAV와 KOSPI 비교 라인 차트 — 구간 시작 1000 기준 정규화"></div></div>
@@ -133,7 +134,7 @@
   <section class="pf-nav-chart-wrap" id="fundCompSection">
     <div class="pf-nav-header">
       <h3>자산군별 비중 추이</h3>
-      <div class="pf-sub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별 · 음영=추정(2026.3~)</div>
+      <div class="pf-sub" id="fundCompSub">금융부문 6대 자산군(국내·해외 주식/채권, 대체투자, 단기자금) · 2012~ 월별</div>
     </div>
     <div class="pf-nav-chart-container"><div id="npsFundCompChart" role="img" aria-label="자산군별 비중 추이 누적 영역 차트 — 국내·해외 주식/채권, 대체투자, 단기자금"></div></div>
   </section>

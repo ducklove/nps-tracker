@@ -193,6 +193,9 @@ body.embed .container{padding-top:16px; max-width:none;}
   .pf-table thead th{padding:12px 8px;}
   .pf-table td{padding:9px 8px;}
   #tableSearch{width:150px;}
+  .pf-range button,
+  #themeToggle,
+  #loadAllBtn{min-height:44px;}
 }
 
 /* 폰(≤560px) — ① 차트 높이 보정 ② 보유 종목 테이블 카드 변환.
@@ -245,4 +248,13 @@ body.embed .container{padding-top:16px; max-width:none;}
   #npsTable td:nth-child(8)::before{content:"지분율";}
   /* 검색 결과 없음(colspan=8) 단독 행 */
   #npsTable td.pf-table-empty{display:block; grid-column:1 / -1; text-align:center; padding:18px var(--space-3);}
+}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    scroll-behavior:auto !important;
+    animation-duration:0.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0.01ms !important;
+  }
 }
