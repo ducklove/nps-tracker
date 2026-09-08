@@ -51,6 +51,18 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: 이전 도메인 설정 검사
+        env:
+          CHECK_KIS_BASE_URL: ${{ secrets.KIS_BASE_URL || vars.KIS_BASE_URL }}
+        run: |
+          python3 - <<'PY'
+          import os
+          retired = '.'.join(('cantabile', 'tplinkdns', 'com'))
+          if retired in os.environ.get('CHECK_KIS_BASE_URL', '').lower():
+              raise SystemExit('KIS_BASE_URL에 이전 도메인이 남아 있습니다.')
+          print('KIS_BASE_URL 이전 도메인 검사 통과')
+          PY
+
       - name: Install dependencies
         if: github.event_name == 'workflow_dispatch' && inputs.refresh_data
         run: |

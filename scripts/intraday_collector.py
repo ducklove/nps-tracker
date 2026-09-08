@@ -3,7 +3,7 @@
 
 KIS 「시장별 투자자매매동향(시세성)」(FHPTJ04030000)을 장중 1분 간격으로 폴링해
 연기금(fund_*) 잠정 누적치를 당일 시계열로 적립하고 OUT_DIR/intraday.json에 원자적으로
-쓴다. Caddy가 https://cantabile.tplinkdns.com/nps/intraday.json 으로 서빙한다(CORS *).
+쓴다. Caddy가 https://ducklove.duckdns.org/nps/intraday.json 으로 서빙한다(CORS *).
 
 - 데이터는 코스콤 장중 잠정 집계로, 장 마감 후 확정치와 다를 수 있다(프런트에 '잠정' 표기).
 - '연기금'은 국민연금을 포함한 연기금 전체 카테고리다(단독 분리는 어떤 소스로도 불가).

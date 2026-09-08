@@ -640,7 +640,7 @@
        잠정치는 장 마감 후 확정 일별 데이터로 대체된다. */
     // :3358 경유 — 443은 2026-07-13부터 외부 Traefik 호스트로 포워딩이 넘어가 TLS가 깨진 상태
     // (라우터/신규 호스트 정리 후 443 복구되면 포트 없는 URL로 되돌려도 됨. 서버는 둘 다 서빙).
-    const INTRADAY_URL='https://cantabile.tplinkdns.com:3358/nps/intraday.json';
+    const INTRADAY_URL='https://ducklove.duckdns.org:3358/nps/intraday.json';
     let _intraday=null;
     function _kstClock(){
       const p=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',
