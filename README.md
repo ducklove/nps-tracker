@@ -48,9 +48,20 @@
 | `data/archive/holdings_*.json` | 연말 보유구성 원본 보존(불변) — 2개 이상부터 YoY 비교가 발행물에 실림 |
 | `tests/` | 오프라인 테스트(파서 골든·NAV 검산·검증 게이트·e2e, `tests/js/` 프론트 순수 함수 `node --test`) — 네트워크 호출 없음 |
 | `data/holdings_latest.csv` · `feed.xml` | 재사용 산출물(자동 생성) — 엑셀·시트용 CSV, 일별 NAV Atom 피드 |
-| `.github/workflows/` | `pages.yml` 갱신·배포(트리거는 아래 서버 crontab의 workflow_dispatch, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest+`node --test tests/js` |
+| `summary.json` · `version.json` | **허브용 요약**(Value Compass 생태계 발행 데이터 계약 v1 envelope) — `nps_tracker/hub_summary.py`가 발행 때 `write_if_changed`로 생성(내용이 같으면 재작성 안 함). 오프라인 재생성: `python -m nps_tracker.hub_summary` |
+| `vc-shell.js` · `vc-tokens.css` · `nps_tracker/vc_publish.py` | **벤더링 파일(직접 수정 금지)** — 허브(value-invest)의 정본을 `node ../value-invest/scripts/sync-ecosystem.mjs --write --only nps-tracker`로 복사. `index.html`의 `<!-- vc:theme-boot -->` 블록도 같은 명령이 채운다 |
+| `scripts/stage_pages.py` | Pages 아티팩트 스테이징 — 공개 사이트 파일만 허용 목록으로 `_site/`에 복사(토큰·캐시·소스 비공개). 새 공개 파일은 여기에 추가 |
+| `.github/workflows/` | `pages.yml` 갱신·배포(아티팩트는 `scripts/stage_pages.py`가 만든 `_site` 허용 목록만, 트리거는 아래 서버 crontab의 workflow_dispatch, +가격 캐시, 실패 시 이슈, NAV ±3% 시 `nav-alert` 이슈) · `ci.yml` ruff+pytest+`node --test tests/js` |
 | `scripts/nps-trigger.sh` | **일 배치 트리거**(상시 가동 서버 pi-worker=192.168.68.67의 crontab, 평일 15:45 KST, 실패 시 60초 간격 3회 재시도) — GitHub schedule은 상시 2~3시간 지연·재등록 불능 문제로 미사용. 서버가 내려가면 모서비스(value-invest)도 내려가므로 별도 백업 스케줄 없음. 서버 배치: `~/bin/nps-trigger.sh` + `crontab`(gh CLI 인증 필요), 로그 `~/log/nps-trigger.log` |
 | `scripts/intraday_collector.py` | **연기금 장중 매매 수집기**(pi-worker systemd `nps-intraday.service`, 평일 08:50~15:40 KST 1분 폴링) — KIS 시세성 잠정 집계(FHPTJ04030000)를 `/srv/nps-intraday/intraday.json`에 적립, Caddy가 `https://ducklove.duckdns.org:3358/nps/intraday.json`(CORS *)으로 서빙. 대시보드는 장중 1분 폴링으로 누적 순매수 곡선 표시, 휴장/장외엔 자동 숨김. 서버 원본: `~/Works/nps-intraday-collector.py`, 자격증명: `~/Works/kis_proxy/.env` 재사용 |
+
+## Value Compass 생태계 연동
+- 상단 에코시스템 바 `<vc-shell tool="nps-tracker">`(허브·형제 도구 전환, 보유 종목 행 선택 시 "허브에서 분석 ↗").
+  iframe·`?embed`·`?vc-shell=0`이면 스스로 숨는다. JS가 막히면 안쪽 허브 링크가 폴백으로 보인다.
+- 테마는 `<head>`의 공용 pre-paint 부트(`vc:theme-boot`)가 정한다: `?theme` 우선(저장 안 함) → 공용 `theme` 키
+  (구 `nps-theme`는 복사) → `prefers-color-scheme`. 토글은 `VCShell.setTheme`, 차트는 `vc:themechange`에서 재렌더.
+- 상승·하락 색과 본문 폰트는 공용 토큰(`--vc-up`/`--vc-down`, `--vc-font-sans`) alias — 한국 관례(상승 빨강·하락 파랑).
+- 딥링크·iframe 메시지 계약은 `docs/embed.md` §3 참고(`?embed=1`, `?code=`, `vc:ready`/`vc:theme`).
 
 ## NAV 모델
 첫 스냅샷의 평가총액을 NAV 1000으로 고정한다(총좌수 = 첫 평가총액 / 1000). 이후 현금흐름 없이

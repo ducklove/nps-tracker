@@ -110,6 +110,7 @@ jobs:
           git add --ignore-errors data/seed_foreign_holdings.json || true  # 해외주식 seed(없을 수 있음)
           git add --ignore-errors assets/og-image.png || true              # OG 공유 카드(일배치 갱신)
           git add --ignore-errors data/holdings_latest.csv feed.xml || true  # 재사용 산출물(F-14)
+          git add --ignore-errors summary.json version.json || true  # 허브용 요약(생태계 계약 v1, X14)
           if git diff --cached --quiet; then
             echo "No data changes to commit."
             exit 0
@@ -168,11 +169,20 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      # X0: 작업 트리 전체('path: .')를 올리면 .gitignore 대상인 data/kis_token.json(KIS 접근 토큰)·
+      # data/price_cache.json·업종/DART 캐시와 파이썬 소스까지 공개된다(2026-09-30 HEAD 200 확인).
+      # 공개 사이트 파일만 허용 목록(scripts/stage_pages.py)으로 _site/에 모아 그것만 업로드한다.
+      # 토큰 캐시는 다음 실행에 필요 없으므로(actions/cache 대상도 아님) 스테이징 전에 지운다.
+      - name: Stage site files
+        run: |
+          rm -f data/kis_token.json
+          python3 scripts/stage_pages.py _site
+
       - name: Upload artifact
         id: upload
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       # Pages는 pages_build_version(deploy-pages가 GITHUB_SHA에서 읽음)이 이미 배포된
       # 버전과 같으면 새 artifact를 서빙에 반영하지 않는다. refresh 실행의 GITHUB_SHA는

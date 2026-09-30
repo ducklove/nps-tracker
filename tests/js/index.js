@@ -5,3 +5,4 @@
 import('./format.test.mjs');
 import('./calc.test.mjs');
 import('./structure.test.mjs');
+import('./ecosystem.test.mjs');

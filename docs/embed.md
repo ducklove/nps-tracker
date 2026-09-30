@@ -11,10 +11,14 @@
 | `https://ducklove.github.io/nps-tracker/data.js` | `window.NPS_DATA = {...}` 래퍼(구형 임베드·`file://` 열람 호환용) — 신규 소비자는 `data.json` 사용 |
 | `https://ducklove.github.io/nps-tracker/data/holdings_latest.csv` | 전체 보유내역 CSV(utf-8-sig) — 엑셀·구글시트에서 바로 열람 |
 | `https://ducklove.github.io/nps-tracker/feed.xml` | Atom 피드 — 일별 NAV 업데이트 구독(RSS 리더·자동화 트리거용) |
+| `https://ducklove.github.io/nps-tracker/summary.json` | **허브용 요약**(Value Compass 생태계 발행 데이터 계약 v1 envelope, ~3 KB) — 요약·기금 자산배분(+목표)·비중 상위 10. 계약: value-invest `docs/ecosystem/data-contract.md` §6.7 |
+| `https://ducklove.github.io/nps-tracker/version.json` | 변경 감지용(<1 KB) — `files["summary.json"]` = summary의 contentHash. 같으면 본문을 다시 받을 필요 없음 |
 | `https://ducklove.duckdns.org:3358/nps/intraday.json` | **연기금 장중 매매(잠정)** — 1분 갱신 누적 순매수 시계열. 별도 채널(pi-worker 수집·서빙, CORS *). `date`가 오늘(KST)이 아니면 휴장/수집중단으로 간주할 것. 잠정치라 장 마감 확정치와 다름 |
 
 - GitHub Pages는 `access-control-allow-origin: *`을 내려주므로 브라우저 fetch에 CORS 제약이 없다.
 - CDN 캐시 우회: `data.json?t=<timestamp>` 처럼 고유 쿼리를 붙여 요청할 것(본 대시보드도 동일).
+- 데이터가 바뀌지 않은 재실행은 파일을 다시 쓰지 않는다(no-op): `lastUpdated`는 내용이 바뀐 발행에서만 바뀌고,
+  `summary.json`/`version.json`은 내용 해시·`asOf`가 같으면 그대로 둔다.
 - 갱신 주기: 평일 15:45 KST(장마감 직후, 상시 가동 서버 트리거 — GitHub schedule은
   상시 2~3시간 지연 문제로 미사용) + 수시 수동 실행.
 
@@ -57,9 +61,22 @@ market_value, change_pct, weight, sector|null`
 
 | 파라미터 | 값 | 효과 |
 | --- | --- | --- |
-| `embed` | `true` | 헤더·출처 노트 숨김, 여백 축소(부모 페이지가 맥락 제공 전제) |
-| `theme` | `light` \| `dark` | 테마 강제 + 토글 숨김(부모가 제어) |
-| `lang` | `ko` \| `en` | UI 언어(F-11). 데이터 값(종목명·경고문 등)은 원문 유지 |
+| `embed` | `true` \| `1` \| (값 없음) | 헤더·출처 노트·에코시스템 바 숨김, 여백 축소(부모 페이지가 맥락 제공 전제). `0`·`false`는 embed 아님(생태계 딥링크 계약 §5-1) |
+| `theme` | `light` \| `dark` | 테마 강제(저장 안 함) + 토글 숨김(부모가 제어) |
+| `code` | 6자리 종목코드(대소문자 무시) | 보유 종목 표에서 해당 행으로 스크롤·하이라이트(상위 100 밖이면 전체 목록을 불러옴). 없는 코드는 무시. 행을 클릭하면 `?code`가 되쓰이고 에코시스템 바에 "허브에서 분석 ↗" 칩이 뜬다 |
+| `vc-shell` | `0` | 상단 Value Compass 에코시스템 바 끄기(디버그·스크린샷용) |
+
+### iframe 메시지 (Value Compass 허브 ↔ 대시보드)
+
+origin은 허브(`https://ducklove.duckdns.org:3691`, 레지스트리 정본)로만 주고받는다.
+
+| 방향 | 메시지 | 동작 |
+| --- | --- | --- |
+| 자식 → 부모 | `{source:'vc', type:'vc:ready', tool:'nps-tracker', features:['theme']}` | iframe 안에서 초기화가 끝나면 1회 송신. 허브는 이를 받은 자식에게만 src 리로드 대신 postMessage로 테마를 보낸다 |
+| 부모 → 자식 | `{source:'vc', type:'vc:theme', theme:'light'\|'dark'}` | 리로드 없이 테마 적용 + 차트 재렌더 |
+
+embed 모드에서 발행물이 갱신되면(15분 주기·탭 복귀 시 확인) 페이지를 리로드하지 않고 데이터만 다시 그린다
+(스크롤 위치 유지). 단독 페이지는 기존처럼 리로드한다.
 
 ## 4. 소비 예시
 

@@ -4,11 +4,16 @@
 계약 v2: 기존 필드는 한 글자도 바꾸지 않고(외부 소비자: value-invest 허브의 current.json·iframe)
 schemaVersion / composition / warnings 를 **추가**한다. data.json은 data.js와 동일 객체의 순수 JSON.
 fundPortfolio가 있으면 중기 자산배분 목표(targets)를 데이터로 함께 발행한다.
+
+no-op 규칙(P2): lastUpdated(실행 시각)를 뺀 내용이 기존 data.json·current.json과 같으면 세 파일을
+다시 쓰지 않고 기존 lastUpdated를 유지한다 → 재실행이 git diff·데이터 커밋·임베드 리로드를 만들지 않는다.
+허브용 요약(summary.json/version.json, 생태계 계약 v1)은 hub_summary가 같은 규칙(write_if_changed)으로 쓴다.
 """
 from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import re
 from xml.sax.saxutils import escape
@@ -18,7 +23,13 @@ from fin_commons.timeutil import kst_stamp
 
 from . import config
 from .fund import _latest_allocation
-from .io_utils import _write_json
+from .hub_summary import publish_summary
+from .io_utils import _read_json, _write_json
+
+logger = logging.getLogger("nps")
+
+# 실행마다 바뀌는(내용과 무관한) 필드 — no-op 비교에서 제외
+VOLATILE_KEYS = ("lastUpdated",)
 
 # 기존 source 문자열 "seed(2024-12-31)" / "data.go.kr(2024-12-31)" → 구조화 분해용
 _SOURCE_RE = re.compile(r"^(?P<source>.+?)\((?P<date>\d{4}-\d{2}-\d{2})\)$")
@@ -99,6 +110,22 @@ def _write_feed(hist: list[dict], snap_date: str) -> None:
         f.write(feed)
 
 
+def _stable_text(obj) -> str | None:
+    """VOLATILE_KEYS를 뺀 정규 JSON 문자열(비교용). JSON 왕복으로 튜플·int 키 등을 기존 파일과 같은 모양으로 맞춘다."""
+    if not isinstance(obj, dict):
+        return None
+    norm = json.loads(json.dumps({k: v for k, v in obj.items() if k not in VOLATILE_KEYS}, ensure_ascii=False))
+    return json.dumps(norm, ensure_ascii=False, sort_keys=True)
+
+
+def _unchanged(new_obj: dict, path: str) -> dict | None:
+    """기존 파일이 new_obj와 (VOLATILE_KEYS 제외) 같으면 기존 객체를, 아니면 None."""
+    old = _read_json(path)
+    if isinstance(old, dict) and _stable_text(old) == _stable_text(new_obj):
+        return old
+    return None
+
+
 def write_outputs(snap_date, source, holdings, total_value, nav,
                   today_pct, mtd, ytd, hist, kospi, fund_portfolio=None, warnings=None,
                   sectors=None, yoy=None, foreign=None, pension_trade=None, peer_funds=None):
@@ -162,12 +189,8 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "peerFunds": peer_funds,   # F-15 연기금·공제회 비교(seed 수동 갱신 + NPS 라이브, 없으면 None)
     }
 
-    payload = json.dumps(nps_data, ensure_ascii=False)
-    atomic_write_text(os.path.join(config.ROOT, "data.js"), "window.NPS_DATA = " + payload + ";\n")
-    # data.json = data.js와 동일 객체의 순수 JSON(신규 소비자용; data.js는 file://·구형 임베드 호환용 유지)
-    atomic_write_text(os.path.join(config.ROOT, "data.json"), payload)
     # current.json은 전체 보유내역(지연 로딩 + 허브 인사이트용)
-    _write_json(os.path.join(config.ROOT, "current.json"), {
+    current = {
         "lastUpdated": nps_data["lastUpdated"],
         "asOf": snap_date,
         "source": source,
@@ -181,7 +204,27 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
         "sectors": sectors or [],
         "pensionTrade": pension_trade,
         "peerFunds": peer_funds,
-    })
+    }
+
+    data_js_path = os.path.join(config.ROOT, "data.js")
+    data_json_path = os.path.join(config.ROOT, "data.json")
+    current_path = os.path.join(config.ROOT, "current.json")
+    # P2 no-op: 내용이 같으면 기존 lastUpdated 유지 + 세 파일 재작성 생략(data.js 누락 시에는 복구 작성)
+    prev_data = _unchanged(nps_data, data_json_path)
+    prev_cur = _unchanged(current, current_path) if prev_data is not None else None
+    changed = not (prev_data is not None and prev_cur is not None
+                   and prev_data.get("lastUpdated") == prev_cur.get("lastUpdated")
+                   and os.path.exists(data_js_path))
+    if changed:
+        payload = json.dumps(nps_data, ensure_ascii=False)
+        atomic_write_text(data_js_path, "window.NPS_DATA = " + payload + ";\n")
+        # data.json = data.js와 동일 객체의 순수 JSON(신규 소비자용; data.js는 file://·구형 임베드 호환용 유지)
+        atomic_write_text(data_json_path, payload)
+        _write_json(current_path, current)
+    else:
+        nps_data["lastUpdated"] = current["lastUpdated"] = prev_data.get("lastUpdated")
+        logger.info("발행물 내용 변화 없음(asOf %s) — data.js·data.json·current.json 유지(lastUpdated %s)",
+                    snap_date, nps_data["lastUpdated"])
     _write_json(config.NAV_HISTORY, [{
         "date": s["date"], "total_value": s["total_value"],
         "nav": s["nav"], "total_count": s.get("total_count", 0),
@@ -189,3 +232,10 @@ def write_outputs(snap_date, source, holdings, total_value, nav,
     # 재사용 산출물(F-14) — 실패해도 본 발행물에는 영향 없음(부가 파일).
     _write_holdings_csv(hjson, snap_date)
     _write_feed(hist, snap_date)
+    # 허브용 요약(X14) — summary.json/version.json. 헬퍼 검증 실패(NaN 등)면 이전 파일을 유지하고 경고만.
+    try:
+        if publish_summary(current):
+            logger.info("summary.json 갱신(허브용 요약)")
+    except (ValueError, OSError) as exc:  # EnvelopeError는 ValueError 하위
+        logger.warning("summary.json 발행 생략: %s", exc)
+    return changed

@@ -28,6 +28,12 @@ jobs:
       - name: Test (pytest, 오프라인)
         run: python -m pytest -q
 
+      - name: Validate hub summary envelope (summary.json)
+        run: python nps_tracker/vc_publish.py validate summary.json
+
+      - name: Stage Pages artifact (allowlist dry run)
+        run: python scripts/stage_pages.py "$RUNNER_TEMP/_site"
+
   test-js:
     runs-on: ubuntu-latest
     steps:

@@ -27,6 +27,24 @@
     return {theme:theme, migrate:migrate};
   }
 
+  /* ---------- Value Compass 생태계 계약(딥링크·iframe 메시지) ---------- */
+  /* ?embed 해석(계약 §5-1): 파라미터가 있고 값이 '0'/'false'가 아니면 embed. 'true'·'1'·빈 값 모두 embed. */
+  function isEmbedParam(v){ return v!=null && v!=='0' && v!=='false'; }
+  /* ?code= 종목코드 정규화: 대소문자 무시, 6자리 영숫자(허브 분석 형식 ^[0-9A-Z]{6}$)만. 아니면 null. */
+  function normalizeStockCode(v){
+    var c=String(v==null?'':v).trim().toUpperCase();
+    return /^[0-9A-Z]{6}$/.test(c) ? c : null;
+  }
+  /* URL → origin 문자열(해석 실패 시 null) */
+  function originOf(url){
+    try{ return new URL(String(url)).origin; }catch(e){ return null; }
+  }
+  /* 허브 → 자식 postMessage 검증: {source:'vc', type} 이고 보낸 origin이 허브 origin과 같아야 한다. */
+  function isVcMessage(data, origin, hubOrigin, type){
+    return !!(data && typeof data==='object' && data.source==='vc' && data.type===type &&
+      hubOrigin && origin===hubOrigin);
+  }
+
   /* ---------- 포맷터 ---------- */
   function fmtKrwJo(v){
     var av=Math.abs(v);
@@ -151,6 +169,10 @@
     esc:esc,
     tt:tt,
     resolveInitialTheme:resolveInitialTheme,
+    isEmbedParam:isEmbedParam,
+    normalizeStockCode:normalizeStockCode,
+    originOf:originOf,
+    isVcMessage:isVcMessage,
     fmtKrwJo:fmtKrwJo,
     fmtSignedKrw:fmtSignedKrw,
     fmtKrwAxis:fmtKrwAxis,
