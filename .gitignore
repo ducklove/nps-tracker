@@ -18,3 +18,6 @@ _*.csv
 _*.html
 _*.tsv
 _scratch*
+
+# Pages 아티팩트 스테이징 디렉터리(scripts/stage_pages.py, CI에서만 생성)
+_site/

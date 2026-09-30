@@ -10,22 +10,57 @@
   /* ---------- XSS 위생: 외부 데이터 유래 문자열은 innerHTML·tooltip HTML 진입 전 esc ---------- */
   const esc = NpsFormat.esc;
 
-  /* ---------- URL 파라미터: ?embed=true (헤더·출처 숨김), ?theme=light|dark (부모 테마 강제) ---------- */
+  /* ---------- URL 파라미터 ----------
+     ?embed (값이 없거나 true/1 등 '0'/'false'가 아닌 값 — 계약 §5-1) → 헤더·출처 숨김,
+     ?theme=light|dark → 부모 테마 강제(저장 안 함), ?code=<6자리> → 보유 종목 행 포커스. */
   const _params=new URLSearchParams(location.search);
-  const _embed=_params.get('embed')==='true';
-  const _themeParam=_params.get('theme');
+  const _embed=NpsFormat.isEmbedParam(_params.get('embed'));
+  const _themeParam=(t=>t==='light'||t==='dark'?t:null)(_params.get('theme'));
   if(_embed) document.body.classList.add('embed');
 
-  /* 테마: 쿼리 theme 우선 → localStorage → 시스템. (데이터 로드 전에 즉시 적용)
-     저장 키는 'theme'(허브·위성 대시보드 공통). 구 키 'nps-theme'는 읽기 폴백 후 'theme'로 이전. */
-  const _themeInit=NpsFormat.resolveInitialTheme({
-    param:_themeParam,
-    saved:localStorage.getItem('theme'),
-    legacy:localStorage.getItem('nps-theme'),
-    prefersDark:!!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches),
-  });
-  if(_themeInit.migrate) localStorage.setItem('theme',_themeInit.migrate);
-  document.documentElement.setAttribute('data-theme', _themeInit.theme);
+  /* localStorage는 차단 환경(사파리 프라이빗·서드파티 iframe 등)에서 접근만으로 throw → 항상 try/catch */
+  function _lsGet(k){ try{ return window.localStorage.getItem(k); }catch(e){ return null; } }
+  function _lsSet(k,v){ try{ window.localStorage.setItem(k,v); }catch(e){ /* 저장 불가: 이 페이지에만 적용 */ } }
+
+  /* 테마: <head>의 vc:theme-boot(Value Compass 공용 pre-paint 부트)가 첫 페인트 전에 data-theme를 정한다
+     (?theme 우선·저장 안 함 → 공용 'theme' 키 → 구 키 'nps-theme' 복사 → prefers-color-scheme).
+     부트가 없거나 실패한 경우에만 같은 규칙으로 여기서 적용한다(폴백). */
+  if(!/^(light|dark)$/.test(document.documentElement.getAttribute('data-theme')||'')){
+    const _themeInit=NpsFormat.resolveInitialTheme({
+      param:_themeParam,
+      saved:_lsGet('theme'),
+      legacy:_lsGet('nps-theme'),
+      prefersDark:!!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches),
+    });
+    if(_themeInit.migrate) _lsSet('theme',_themeInit.migrate);
+    document.documentElement.setAttribute('data-theme', _themeInit.theme);
+  }
+
+  /* ---------- Value Compass 허브 연동 ----------
+     허브 origin은 벤더링된 vc-shell.js의 레지스트리(허브 config/ecosystem.json 정본)에서 읽고,
+     셸이 로드되지 않았을 때만 상수로 폴백한다. iframe 메시지는 이 origin과만 주고받는다. */
+  const TOOL_ID='nps-tracker';
+  const HUB_ORIGIN=NpsFormat.originOf((window.VCShell && window.VCShell.registry && window.VCShell.registry.hub) ||
+    'https://ducklove.duckdns.org:3691');
+  const _framed=(()=>{ try{ return window.parent!==window; }catch(e){ return true; } })();
+  function _postToHub(msg){
+    if(!_framed || !HUB_ORIGIN) return;
+    try{ window.parent.postMessage(Object.assign({source:'vc', tool:TOOL_ID}, msg), HUB_ORIGIN); }catch(e){ /* 무시 */ }
+  }
+  /* 허브 → 자식 테마 푸시({source:'vc',type:'vc:theme',theme}). vc-shell.js가 있으면 셸이 처리해
+     'vc:themechange'를 발행하므로, 셸이 없을 때만 직접 적용한다(리로드 없이 차트만 재렌더). */
+  if(!window.VCShell){
+    window.addEventListener('message', e=>{
+      if(!NpsFormat.isVcMessage(e.data, e.origin, HUB_ORIGIN, 'vc:theme')) return;
+      const th=e.data.theme==='dark'?'dark':(e.data.theme==='light'?'light':null);
+      if(!th) return;
+      document.documentElement.setAttribute('data-theme', th);
+      document.dispatchEvent(new CustomEvent('vc:themechange', {detail:{theme:th}}));
+    });
+  }
+  function _setShellStock(code, name){
+    if(window.VCShell && typeof window.VCShell.setStock==='function') window.VCShell.setStock(code||null, name||null);
+  }
 
   /* ---------- 한국어 고정 ----------
      t()=리터럴 반환, tt()=template {x} 슬롯 치환. */
@@ -80,6 +115,7 @@
 
   /* ---------- 초기화(비동기 진입점) ---------- */
   function init(DATA){
+    /* DATA는 신선도 워치독이 embed 모드에서 새 스냅샷으로 교체한다(_applyData) — 렌더 함수는 호출 시점의 DATA를 읽는다. */
 
     /* ---------- 포매터 (순수 구현은 assets/format.js) ---------- */
     const {fmtKrwJo, fmtSignedKrw, fmtKrwAxis, fmtPct, fmtPlainPct, fmtShares, pctClass, returnToColor}=NpsFormat;
@@ -326,6 +362,7 @@
     let _sortKey='mv', _sortAsc=false;
     let _allHoldings=null;
     let _searchQuery='';
+    let _focusCode=null;   // 포커스 종목(대문자 6자리) — ?code= 또는 행 클릭
     function _holdings(){ return _allHoldings || DATA.holdings || []; }
     function renderTable(){
       const tbody=document.querySelector('#npsTable tbody');
@@ -335,7 +372,9 @@
       rows.sort(NpsFormat.holdingsComparator(_sortKey, _sortAsc));
       tbody.innerHTML = rows.map((h,i)=>{       // 번호는 필터·정렬 결과 기준 재번호
         const cp=h.change_pct;
-        return '<tr>'+
+        const code=String(h.stock_code||'');
+        const focused=_focusCode && code.toUpperCase()===_focusCode;
+        return '<tr data-code="'+esc(code)+'"'+(focused?' class="pf-row-focus" aria-selected="true"':'')+'>'+
           '<td class="pf-col-num">'+(i+1)+'</td>'+
           '<td class="pf-col-name">'+esc(h.stock_name)+'</td>'+
           '<td class="'+pctClass(cp)+'">'+fmtPct(cp)+'</td>'+
@@ -358,7 +397,9 @@
       const total=DATA.holdingsTotal || _holdings().length;
       if(wrap){
         if(!_allHoldings && total > _holdings().length){
-          document.getElementById('loadAllBtn').textContent=tt('전체 {n}종목 보기 (현재 상위 {k})', {n:total.toLocaleString(LOC), k:_holdings().length});
+          const btn=document.getElementById('loadAllBtn');
+          btn.textContent=tt('전체 {n}종목 보기 (현재 상위 {k})', {n:total.toLocaleString(LOC), k:_holdings().length});
+          btn.disabled=false;   // embed 재렌더(_applyData)로 전체 목록이 비워진 뒤에도 다시 누를 수 있게
           wrap.style.display='';
         } else { wrap.style.display='none'; }
       }
@@ -379,17 +420,62 @@
     });
     document.getElementById('loadAllBtn').addEventListener('click', async function(){
       this.textContent=t('불러오는 중…'); this.disabled=true;
-      try{
-        const r=await fetch('current.json',{cache:'no-cache'});
-        const j=await r.json();
-        _allHoldings=j.holdings||[];
-        renderTable();
-      }catch(e){ this.textContent=t('불러오기 실패 — 다시 시도'); this.disabled=false; }
+      if(await _loadAllHoldings()) renderTable();
+      else { this.textContent=t('불러오기 실패 — 다시 시도'); this.disabled=false; }
     });
     const _searchInput=document.getElementById('tableSearch');
     if(_searchInput){
       _searchInput.addEventListener('input',()=>{ _searchQuery=_searchInput.value; renderTable(); });
     }
+
+    /* ---------- 종목 포커스 (?code=<6자리> 딥링크 · 행 클릭) ----------
+       포커스 종목은 행 하이라이트 + 에코시스템 바의 '허브에서 분석 ↗' 칩(VCShell.setStock).
+       상위 100 밖의 종목이면 current.json(전체)을 불러와 찾는다. 대상이 없으면 조용히 기본 화면.
+       선택이 바뀌면 history.replaceState로 ?code를 되쓴다(공유 가능한 URL, 계약 §5-1). */
+    function _findHolding(code){ return _holdings().find(h=>String(h.stock_code||'').toUpperCase()===code) || null; }
+    function _writeCodeParam(code){
+      try{
+        const p=new URLSearchParams(location.search);
+        if(code) p.set('code', code); else p.delete('code');
+        const q=p.toString();
+        history.replaceState(history.state, '', location.pathname+(q?'?'+q:'')+location.hash);
+      }catch(e){ /* file:// 등 replaceState 불가 환경 */ }
+    }
+    function _focusStock(code, opts){
+      opts=opts||{};
+      const h=code ? _findHolding(code) : null;
+      _focusCode=h ? code : null;
+      _setShellStock(_focusCode, h && h.stock_name);
+      if(opts.writeUrl) _writeCodeParam(_focusCode);
+      renderTable();
+      if(_focusCode && opts.scroll){
+        const tr=document.querySelector('#npsTable tbody tr.pf-row-focus');
+        if(tr && tr.scrollIntoView) tr.scrollIntoView({block:'center', behavior:'smooth'});
+      }
+      return !!h;
+    }
+    async function _loadAllHoldings(){
+      if(_allHoldings) return true;
+      try{
+        const r=await fetch('current.json',{cache:'no-cache'});
+        const j=await r.json();
+        _allHoldings=j.holdings||[];
+        return true;
+      }catch(e){ return false; }
+    }
+    async function _focusFromParam(){
+      const code=NpsFormat.normalizeStockCode(_params.get('code'));
+      if(!code) return;
+      if(!_findHolding(code) && (DATA.holdingsTotal||0) > _holdings().length) await _loadAllHoldings();
+      _focusStock(code, {scroll:true});
+    }
+    document.querySelector('#npsTable tbody').addEventListener('click', e=>{
+      const tr=e.target && e.target.closest ? e.target.closest('tr[data-code]') : null;
+      if(!tr) return;
+      const code=NpsFormat.normalizeStockCode(tr.getAttribute('data-code'));
+      if(!code) return;
+      _focusStock(code===_focusCode ? null : code, {writeUrl:true});   // 같은 행 재클릭 = 해제
+    });
 
     /* ---------- 차트 ---------- */
     let _charts=[];
@@ -944,48 +1030,92 @@
       });
     }
 
-    /* ---------- 테마 토글 (embed 또는 theme 지정 시 숨김 — 부모가 제어) ---------- */
+    /* ---------- 테마 토글 (embed 또는 theme 지정 시 숨김 — 부모가 제어) ----------
+       토글은 VCShell.setTheme(공용 'theme' 키 저장 + 적용 + 'vc:themechange' 발행)을 쓰고,
+       셸이 없을 때만 직접 적용한다. 차트 재렌더는 아래 'vc:themechange' 한 곳에서만 한다
+       (허브 iframe 테마 푸시·다른 탭의 테마 변경·시스템 테마 변경도 같은 경로). */
     const _toggle=document.getElementById('themeToggle');
+    const syncToggleLabel=()=>{ if(_toggle) _toggle.textContent = _isDark()?t('라이트 모드'):t('다크 모드'); };
     if(_embed || _themeParam){
       _toggle.style.display='none';
     } else {
-      const syncToggleLabel=()=>{ _toggle.textContent = _isDark()?t('라이트 모드'):t('다크 모드'); };
       _toggle.addEventListener('click',()=>{
         const next=_isDark()?'light':'dark';
+        if(window.VCShell && typeof window.VCShell.setTheme==='function'){ window.VCShell.setTheme(next); return; }
         document.documentElement.setAttribute('data-theme',next);
-        localStorage.setItem('theme',next);
-        syncToggleLabel(); renderCharts();
+        _lsSet('theme',next);
+        document.dispatchEvent(new CustomEvent('vc:themechange', {detail:{theme:next}}));
       });
       syncToggleLabel();
     }
+    document.addEventListener('vc:themechange',()=>{
+      syncToggleLabel();
+      if(typeof echarts!=='undefined') renderCharts();   // ECharts 로드 전이면 첫 렌더가 현재 테마로 그린다
+    });
 
     /* ---------- 실행 ---------- */
-    renderSummary();
-    renderCompBadge();
-    renderWarnings();
-    renderContrib();
-    renderSectors();
-    renderPeerFunds();
-    renderYoy();
-    renderForeign();
-    renderTable();
+    function renderAll(){
+      renderSummary();
+      renderCompBadge();
+      renderWarnings();
+      renderContrib();
+      renderSectors();
+      renderPeerFunds();
+      renderYoy();
+      renderForeign();
+      renderTable();
+    }
+    renderAll();
+    _focusFromParam();
     _echartsReady.then(renderCharts, showChartError);
     // 장중 잠정 매매: 최초 1회 + 장중(08:55~15:45 KST)에는 1분마다 갱신(탭이 보일 때만)
     _echartsReady.then(loadIntraday, ()=>{});
     setInterval(()=>{ if(_intradayLive() && document.visibilityState==='visible') loadIntraday(); }, 60000);
+    // 허브 iframe(부모)에 준비 완료 알림 — 허브는 vc:ready를 받은 자식에게만 src 리로드 대신
+    // postMessage 테마 푸시({source:'vc',type:'vc:theme'})를 쓴다(UI-14 점진 호환).
+    _postToHub({type:'vc:ready', features:['theme']});
+
+    /* embed 모드의 새 스냅샷 반영: 리로드(스크롤 위치 소실) 대신 DATA를 교체해 다시 그린다.
+       전체 보유(current.json)는 다음 요청 때 새로 받도록 비우고, 포커스 종목은 새 데이터에서 다시 찾는다. */
+    function _applyData(d){
+      DATA=d;
+      _allHoldings=null;
+      renderAll();
+      if(typeof echarts!=='undefined') renderCharts();
+      if(_focusCode){   // 상위 100 밖 포커스 종목은 전체 목록을 다시 받아 유지, 사라졌으면 해제
+        const c=_focusCode;
+        (async()=>{
+          if(!_findHolding(c) && (DATA.holdingsTotal||0) > _holdings().length) await _loadAllHoldings();
+          _focusStock(c);
+        })();
+      }
+    }
     /* 신선도 워치독 — 허브(도구 화면) 등에 오래 열려 있는 탭/iframe은 로드 시점 스냅샷에
        얼어붙는다(일별 차트는 로드 시 1회만 그림). 탭이 다시 보일 때(bfcache 복원 포함)와
-       15분 주기로 발행물 lastUpdated를 확인해 갱신됐으면 리로드한다(1회성 — 새 스냅샷의
-       lastUpdated가 로드값이 되므로 루프 없음). 실패는 무시(오프라인 등). */
-    let _freshLast=0;
+       15분 주기로 확인해, 발행물 lastUpdated가 바뀌었으면 단독 페이지는 리로드, embed는 재렌더한다
+       (1회성 — 새 스냅샷의 lastUpdated가 기준값이 되므로 루프 없음). 실패는 무시(오프라인 등).
+       lastUpdated는 내용이 바뀐 발행에서만 바뀐다(publish.py no-op 규칙). 매번 200 KB data.json을
+       받지 않도록 1 KB version.json(허브용 요약의 contentHash — lastUpdated 포함)이 직전과 같으면 생략한다. */
+    let _freshLast=0, _freshVersion=null;
     function _checkFresh(){
       const now=Date.now();
       if(now-_freshLast<60000) return;
       _freshLast=now;
-      fetch('data.json?t='+now,{cache:'no-store'})
+      fetch('version.json?t='+now,{cache:'no-store'})
         .then(r=>r.ok?r.json():null)
-        .then(d=>{
-          if(d && d.lastUpdated && DATA.lastUpdated && d.lastUpdated!==DATA.lastUpdated) location.reload();
+        .catch(()=>null)
+        .then(v=>{
+          const hash=v && v.files && v.files['summary.json'];
+          if(hash && hash===_freshVersion) return null;   // 변화 없음 — 본문 생략
+          return fetch('data.json?t='+now,{cache:'no-store'})
+            .then(r=>r.ok?r.json():null)
+            .then(d=>{
+              if(!d || !d.lastUpdated || !DATA.lastUpdated) return;
+              if(d.lastUpdated!==DATA.lastUpdated){
+                if(_embed) _applyData(d); else { location.reload(); return; }
+              }
+              if(hash) _freshVersion=hash;   // 이 스냅샷을 확인한 뒤에만 기준 해시로 기억
+            });
         })
         .catch(()=>{});
     }

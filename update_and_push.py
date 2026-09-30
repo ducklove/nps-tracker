@@ -33,6 +33,7 @@ DATA_PATHS = [
 OPTIONAL_PATHS = [  # 없을 수 있음
     "data/seed_foreign_holdings.json", "assets/og-image.png",
     "data/holdings_latest.csv", "feed.xml",  # 재사용 산출물(F-14)
+    "summary.json", "version.json",  # 허브용 요약(생태계 계약 v1, X14)
 ]
 
 PUSH_RETRIES = 3

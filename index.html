@@ -1,8 +1,35 @@
 <!DOCTYPE html>
-<html lang="ko" data-theme="light">
+<html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 테마·embed pre-paint 부트 (Value Compass 공용): ?theme=light|dark는 저장 없이 적용, 공용 'theme' 키
+     (구 키 'nps-theme'는 부트가 'theme'로 복사), 미설정 시 prefers-color-scheme, ?embed(0/false 제외) → html[data-embed].
+     블록 안은 value-invest scripts/sync-ecosystem.mjs --write가 채운다 — 직접 수정 금지. -->
+<!-- vc:theme-boot --><script>
+/* vc-theme-boot v1 (value-invest static/ecosystem/vc-theme-boot.js) — pre-paint theme; inlined by sync-ecosystem, do not edit copies. */
+(function () {
+  var d = document.documentElement, p = null, s = null, t, v, i;
+  var legacy = ['bondmate.theme', 'eiayn:theme:v1', 'spac-hunter-theme', 'preferred-theme', 'nps-theme'];
+  try { p = new URLSearchParams(location.search); } catch (e) { p = null; }
+  try {
+    s = localStorage.getItem('theme');
+    if (s === null) {
+      for (i = 0; i < legacy.length && s === null; i++) {
+        v = localStorage.getItem(legacy[i]);
+        if (v && v.charAt(0) === '"') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+        if (v === 'light' || v === 'dark') { s = v; localStorage.setItem('theme', v); }
+      }
+    }
+  } catch (e) { s = null; }
+  t = p && p.get('theme');
+  if (t !== 'light' && t !== 'dark') t = s === 'light' || s === 'dark' ? s : null;
+  if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  d.setAttribute('data-theme', t);
+  v = p && p.get('embed');
+  if ((v !== null && v !== undefined && v !== '0' && v !== 'false') || (p && p.get('headless') === '1')) d.setAttribute('data-embed', v || '');
+})();
+</script><!-- /vc:theme-boot -->
 <title>국민연금 국내주식 포트폴리오</title>
 <meta name="description" content="국민연금공단(NPS) 국내주식 보유 포트폴리오를 일별 종가로 재평가한 NAV 추이와 KOSPI 비교 대시보드">
 <!-- F-13 공유 카드(OG) — og-image.png는 일배치(ogimage.py)가 NAV 요약으로 매일 갱신 -->
@@ -21,7 +48,9 @@
 <meta name="theme-color" content="#2563eb">
 <link rel="icon" type="image/png" href="assets/icon-192.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="stylesheet" href="assets/app.css?v=15">
+<!-- 공용 디자인 토큰(vc-tokens.css)은 app.css보다 먼저 — app.css가 --vc-up/--vc-down/--vc-font-sans를 참조한다 -->
+<link rel="stylesheet" href="./vc-tokens.css?v=1.1.0">
+<link rel="stylesheet" href="assets/app.css?v=16">
 <!-- 데이터는 app.js가 data.json(fetch) → data.js(script) 순으로 캐시버스팅 로드해
      iframe 임베드에서도 항상 최신을 보장한다. ECharts는 첫 페인트를 막지 않도록
      app.js가 CDN에서 동적 로드(SRI)하고, 아래 preload는 다운로드만 미리 시작한다.
@@ -30,11 +59,16 @@
      못 쓰므로 full 빌드 유지.
      format.js(순수 유틸, 전역 NpsFormat)는 app.js보다 먼저 로드돼야 한다(defer 순서 계약). -->
 <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous">
-<script src="assets/format.js?v=15" defer></script>
-<script src="assets/app.js?v=15" defer></script>
+<!-- 에코시스템 바(vc-shell.js, 전역 VCShell)는 app.js보다 먼저 — app.js가 VCShell.setTheme/setStock/registry를 쓴다 -->
+<script src="./vc-shell.js?v=1.1.0" defer></script>
+<script src="assets/format.js?v=16" defer></script>
+<script src="assets/app.js?v=16" defer></script>
 <script defer src="./analytics.js" data-project="nps-tracker"></script>
 </head>
 <body>
+<!-- Value Compass 에코시스템 바 — 허브·형제 도구 전환, 종목 선택 시 "허브에서 분석" 칩.
+     embed/iframe/?vc-shell=0이면 스스로 숨는다. 안의 링크는 JS가 막혔을 때의 폴백(기존 허브 링크). -->
+<vc-shell tool="nps-tracker"><a class="hub-link" href="https://ducklove.duckdns.org:3691" rel="noopener">Value Compass ↗</a></vc-shell>
 <div class="container">
   <header>
     <h1>국민연금 국내주식 포트폴리오</h1>
@@ -42,7 +76,6 @@
       <span id="metaAsOf"></span>
       <span id="compBadge" class="comp-badge" style="display:none;"></span>
       <span class="spacer"></span>
-      <a class="hub-link" href="https://ducklove.duckdns.org:3691" rel="noopener">Value Compass ↗</a>
       <button id="themeToggle" type="button">다크 모드</button>
     </div>
     <div class="source-note" id="sourceNote">
