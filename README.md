@@ -56,12 +56,28 @@
 | `scripts/intraday_collector.py` | **연기금 장중 매매 수집기**(pi-worker systemd `nps-intraday.service`, 평일 08:50~15:40 KST 1분 폴링) — KIS 시세성 잠정 집계(FHPTJ04030000)를 `/srv/nps-intraday/intraday.json`에 적립, Caddy가 `https://ducklove.duckdns.org:3358/nps/intraday.json`(CORS *)으로 서빙. 대시보드는 장중 1분 폴링으로 누적 순매수 곡선 표시, 휴장/장외엔 자동 숨김. 서버 원본: `~/Works/nps-intraday-collector.py`, 자격증명: `~/Works/kis_proxy/.env` 재사용 |
 
 ## Value Compass 생태계 연동
-- 상단 에코시스템 바 `<vc-shell tool="nps-tracker">`(허브·형제 도구 전환, 보유 종목 행 선택 시 "허브에서 분석 ↗").
-  iframe·`?embed`·`?vc-shell=0`이면 스스로 숨는다. JS가 막히면 안쪽 허브 링크가 폴백으로 보인다.
-- 테마는 `<head>`의 공용 pre-paint 부트(`vc:theme-boot`)가 정한다: `?theme` 우선(저장 안 함) → 공용 `theme` 키
+[Value Compass](https://ducklove.duckdns.org:3691) 허브 생태계의 한 도구다.
+
+- **레지스트리 id**: `nps-tracker` (integration key `npsTracker`, 허브 화면 `/nps`, 정본: value-invest
+  [`config/ecosystem.json`](https://github.com/ducklove/value-invest/blob/master/config/ecosystem.json)).
+- **에코시스템 바**: `<vc-shell tool="nps-tracker">`(허브·형제 도구 전환, 보유 종목 행 선택 시 "허브에서 분석 ↗").
+  iframe·`?embed`·`?headless=1`·`?vc-shell=0`이면 스스로 숨는다. JS가 막히면 안쪽 허브 링크가 폴백으로 보인다.
+- **벤더링 파일 (직접 수정 금지)**: `vc-shell.js`, `vc-tokens.css`, `nps_tracker/vc_publish.py`, `index.html`의
+  `<!-- vc:theme-boot -->` 블록. 허브에서 고친 뒤 `node ../value-invest/scripts/sync-ecosystem.mjs --write --only nps-tracker`.
+- **테마**: `<head>`의 공용 pre-paint 부트가 정한다: `?theme` 우선(저장 안 함) → 공용 `theme` 키
   (구 `nps-theme`는 복사) → `prefers-color-scheme`. 토글은 `VCShell.setTheme`, 차트는 `vc:themechange`에서 재렌더.
-- 상승·하락 색과 본문 폰트는 공용 토큰(`--vc-up`/`--vc-down`, `--vc-font-sans`) alias — 한국 관례(상승 빨강·하락 파랑).
-- 딥링크·iframe 메시지 계약은 `docs/embed.md` §3 참고(`?embed=1`, `?code=`, `vc:ready`/`vc:theme`).
+  상승·하락 색과 본문 폰트는 공용 토큰(`--vc-up`/`--vc-down`, `--vc-font-sans`) alias — 한국 관례(상승 빨강·하락 파랑).
+- **인바운드 딥링크** (`docs/embed.md` §3): `?code=<6자리>`(허브 `stockLink`, 대소문자 무시 — 해당 보유 행으로 스크롤·
+  하이라이트, 없는 코드는 무시), `?embed`(`0`/`false` 제외, 허브는 `?embed=1`), `?theme=light|dark`, `?vc-shell=0`.
+  iframe 메시지는 허브 origin으로만 `vc:ready`(자식→부모)·`vc:theme`(부모→자식)을 주고받는다.
+- **허브용 요약**: `summary.json` + `version.json`(envelope v1)을 `nps_tracker/hub_summary.py`가 발행 때
+  `write_if_changed`로 쓰고 `pages.yml`이 커밋, `scripts/stage_pages.py` 허용 목록으로 Pages 루트에 올린다
+  (`https://ducklove.github.io/nps-tracker/summary.json`). 계약:
+  [value-invest `docs/ecosystem/data-contract.md`](https://github.com/ducklove/value-invest/blob/master/docs/ecosystem/data-contract.md) §6.7.
+  허브는 요약을 먼저 읽고 실패하면 레거시 `current.json`으로 폴백하므로 그 v2 스키마도 호환을 유지한다.
+- **허브 서비스**: 쓰지 않는다 — 보유종목 배지(`heldBadges: false`), `/api/internal/notify`, `/api/asset-quotes`,
+  kis-proxy, finance-pi 모두 미사용. 장중 수집기는 kis-proxy 서버를 거치지 않고 KIS API를 직접 부르며
+  자격증명 파일(`kis_proxy/.env`)만 재사용한다. 실패·NAV 알림은 GitHub 이슈로 남긴다.
 
 ## NAV 모델
 첫 스냅샷의 평가총액을 NAV 1000으로 고정한다(총좌수 = 첫 평가총액 / 1000). 이후 현금흐름 없이
