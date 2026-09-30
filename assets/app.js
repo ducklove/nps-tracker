@@ -397,7 +397,9 @@
       const total=DATA.holdingsTotal || _holdings().length;
       if(wrap){
         if(!_allHoldings && total > _holdings().length){
-          document.getElementById('loadAllBtn').textContent=tt('전체 {n}종목 보기 (현재 상위 {k})', {n:total.toLocaleString(LOC), k:_holdings().length});
+          const btn=document.getElementById('loadAllBtn');
+          btn.textContent=tt('전체 {n}종목 보기 (현재 상위 {k})', {n:total.toLocaleString(LOC), k:_holdings().length});
+          btn.disabled=false;   // embed 재렌더(_applyData)로 전체 목록이 비워진 뒤에도 다시 누를 수 있게
           wrap.style.display='';
         } else { wrap.style.display='none'; }
       }

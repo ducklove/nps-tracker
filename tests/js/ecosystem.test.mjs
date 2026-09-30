@@ -290,3 +290,26 @@ test('신선도 워치독: version.json 해시가 그대로면 data.json을 다�
   const afterInit = seen.slice(seen.indexOf('version.json'));
   assert.deepEqual(afterInit, ['version.json', 'data.json', 'version.json']);
 });
+
+test('embed 재렌더 후 "전체 보기" 버튼이 다시 활성화된다(전체 목록을 불러온 뒤 새 스냅샷)', async () => {
+  let current = { ...DATA, holdingsTotal: 3 };
+  const full = { holdings: [...DATA.holdings, { stock_code: '035420', stock_name: 'NAVER', weight: 1 }] };
+  const fetchImpl = url => {
+    if (url.startsWith('data.json')) return { ok: true, json: async () => current };
+    if (url.startsWith('current.json')) return { ok: true, json: async () => full };
+    return { ok: false, json: async () => null };
+  };
+  const w = await boot({ search: '?embed=1', framed: true, data: current, fetchImpl });
+  const btn = w.byId('loadAllBtn');
+  assert.equal(btn.disabled, false);
+  btn.fire('click');
+  await w.flush();
+  assert.equal(btn.disabled, true);                    // 불러온 뒤에는 버튼 영역이 숨고 비활성 상태로 남는다
+  assert.equal(w.byId('.load-all-wrap').style.display, 'none');
+  current = { ...current, lastUpdated: '2026-09-26 15:48' };
+  w.docListeners.visibilitychange.forEach(f => f());
+  await w.flush();
+  assert.equal(w.calls.reload, 0);
+  assert.equal(w.byId('.load-all-wrap').style.display, '');
+  assert.equal(btn.disabled, false, '재렌더로 전체 목록이 비워지면 버튼을 다시 누를 수 있어야 한다');
+});
