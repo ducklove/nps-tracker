@@ -2,10 +2,17 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
   <id>https://ducklove.github.io/nps-tracker/</id>
   <title>국민연금 국내주식 포트폴리오 NAV</title>
-  <updated>2026-10-21T16:00:00+09:00</updated>
+  <updated>2026-10-22T16:00:00+09:00</updated>
   <link href="https://ducklove.github.io/nps-tracker/" rel="alternate"/>
   <link href="https://ducklove.github.io/nps-tracker/feed.xml" rel="self"/>
   <author><name>nps-tracker</name></author>
+  <entry>
+    <id>https://ducklove.github.io/nps-tracker/#nav-2026-10-22</id>
+    <title>NAV 1306.79 (-3.55%) — 2026-10-22</title>
+    <updated>2026-10-22T16:00:00+09:00</updated>
+    <link href="https://ducklove.github.io/nps-tracker/"/>
+    <summary>국민연금 국내주식 평가총액 345.271조 원</summary>
+  </entry>
   <entry>
     <id>https://ducklove.github.io/nps-tracker/#nav-2026-10-21</id>
     <title>NAV 1354.95 (+3.35%) — 2026-10-21</title>
@@ -134,16 +141,9 @@
   </entry>
   <entry>
     <id>https://ducklove.github.io/nps-tracker/#nav-2026-09-21</id>
-    <title>NAV 1664.00 (+1.78%) — 2026-09-21</title>
+    <title>NAV 1664.00 — 2026-09-21</title>
     <updated>2026-09-21T16:00:00+09:00</updated>
     <link href="https://ducklove.github.io/nps-tracker/"/>
     <summary>국민연금 국내주식 평가총액 439.651조 원</summary>
-  </entry>
-  <entry>
-    <id>https://ducklove.github.io/nps-tracker/#nav-2026-09-18</id>
-    <title>NAV 1634.85 — 2026-09-18</title>
-    <updated>2026-09-18T16:00:00+09:00</updated>
-    <link href="https://ducklove.github.io/nps-tracker/"/>
-    <summary>국민연금 국내주식 평가총액 431.950조 원</summary>
   </entry>
 </feed>
