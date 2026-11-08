@@ -74,6 +74,8 @@
   `write_if_changed`로 쓰고 `pages.yml`이 커밋, `scripts/stage_pages.py` 허용 목록으로 Pages 루트에 올린다
   (`https://ducklove.github.io/nps-tracker/summary.json`). 계약:
   [value-invest `docs/ecosystem/data-contract.md`](https://github.com/ducklove/value-invest/blob/master/docs/ecosystem/data-contract.md) §6.7.
+  전 종목 비중·공시 지분율 맵(`weights`·`ownership`)과 최신 연말 아카이브 두 개의 지분율 차이(`ownershipChange`)도 싣는다.
+  지분율이 거의 전부 같으면 같은 파일이 다시 나온 것으로 보고 `comparable: false`로 변화를 내지 않는다.
   허브는 요약을 먼저 읽고 실패하면 레거시 `current.json`으로 폴백하므로 그 v2 스키마도 호환을 유지한다.
 - **허브 서비스**: 쓰지 않는다 — 보유종목 배지(`heldBadges: false`), `/api/internal/notify`, `/api/asset-quotes`,
   kis-proxy, finance-pi 모두 미사용. 장중 수집기는 kis-proxy 서버를 거치지 않고 KIS API를 직접 부르며

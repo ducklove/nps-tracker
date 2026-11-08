@@ -9,6 +9,8 @@
 - asOf = 가격 기준일(summary.asOf, 데이터 날짜). 실행 시각을 넣지 않는다(no-op 비교 대상).
 - generatedAt = 발행물 lastUpdated(KST) — 같은 입력이면 같은 파일(결정적). 형식이 다르면 헬퍼 기본값(now).
 - write_if_changed: 내용(contentHash)·asOf가 같으면 파일을 다시 쓰지 않아 git diff가 생기지 않는다.
+- weights·ownership은 허브가 임의 종목의 보유 여부를 답하기 위한 compact 맵이다(합쳐서 약 35 KB, 예산 64 KB).
+  비중은 추정 수량 기반이고 지분율은 공시 원본이다. ownershipChange는 compute_ownership_change 참고.
 
 오프라인 재생성(네트워크 없음, 커밋된 current.json 기준):
     python -m nps_tracker.hub_summary            # summary.json/version.json 갱신(변경 시에만)
@@ -42,6 +44,8 @@ SOURCES = [
 _CODE_RE = re.compile(r"^[0-9A-Z]{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _STAMP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?$")
+_SOURCE_DATE_RE = re.compile(r"\((\d{4}-\d{2}-\d{2})\)")  # "data.go.kr(2025-12-31)"
+_ARCHIVE_RE = re.compile(r"^holdings_(\d{4}-\d{2}-\d{2})\.json$")  # archive.py 와 같은 파일명 규칙
 
 
 def _num(v, digits: int | None = None):
@@ -102,10 +106,79 @@ def _top(holdings: list[dict] | None, n: int = TOP_N) -> list[dict]:
     } for h in rows[:n]]
 
 
-def build_summary_data(current: dict) -> dict:
+def _archive_holdings(day: str) -> dict[str, dict]:
+    with open(os.path.join(config.ARCHIVE_DIR, f"holdings_{day}.json"), encoding="utf-8") as f:
+        return {h["stock_code"]: h for h in json.load(f).get("holdings", [])}
+
+
+def _is_filed_pct(value) -> bool:
+    # 연말 공시 CSV에서 비어 있던 지분율은 0.0으로 저장돼 있어 공시 값으로 보지 않는다.
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
+
+
+def compute_ownership_change() -> dict | None:
+    """최신 두 연말 아카이브의 공시 지분율 차이. 아카이브가 2개 미만이거나 읽을 수 없으면 None.
+
+    data.go.kr 원천은 수량이 없어 ``shares``가 '연말 평가액 ÷ 연말가' 추정치다. 그래서 수량 비교는
+    같은 파일이 날짜만 바뀌어 다시 나와도 큰 변화처럼 보인다. 지분율은 공시 원본 값이므로 지분율만
+    비교하고, 공통 종목의 지분율이 거의 전부 같으면 같은 파일로 보아 ``comparable: false``,
+    ``changes: {}``를 돌려준다. 값을 모르는 종목은 비교하지 않는다(0으로 채우지 않는다).
+    """
+    try:
+        names = os.listdir(config.ARCHIVE_DIR)
+    except OSError:
+        return None
+    dates = sorted(m.group(1) for name in names if (m := _ARCHIVE_RE.match(name)))
+    if len(dates) < 2:
+        return None
+    d_from, d_to = dates[-2], dates[-1]
+    try:
+        old, new = _archive_holdings(d_from), _archive_holdings(d_to)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    pairs = {}
+    for code in old.keys() & new.keys():
+        before, after = old[code].get("ownership_pct"), new[code].get("ownership_pct")
+        if _is_filed_pct(before) and _is_filed_pct(after):
+            pairs[code] = (before, after)
+    if not pairs:
+        return None
+    unchanged = sum(1 for before, after in pairs.values() if before == after)
+    comparable = unchanged / len(pairs) < config.OWNERSHIP_SAME_FILE_RATIO
+    changes = {}
+    if comparable:
+        changes = {code: round(after - before, 2) for code, (before, after) in sorted(pairs.items())
+                   if _CODE_RE.match(code) and round(after - before, 2) != 0}
+    return {"from": d_from, "to": d_to, "comparable": comparable, "changes": changes}
+
+
+def _position_maps(holdings: list[dict] | None) -> tuple[dict, dict]:
+    """전 보유 종목의 {code: 비중}, {code: 공시 지분율}. 값을 모르거나 지분율이 0이면 맵에서 뺀다."""
+    weights: dict[str, float] = {}
+    ownership: dict[str, float] = {}
+    for h in holdings or []:
+        code = str(h.get("stock_code") or "") if isinstance(h, dict) else ""
+        if not _CODE_RE.match(code):
+            continue
+        weight = _num(h.get("weight"), 3)
+        if weight is not None:
+            weights[code] = weight
+        pct = _num(h.get("ownership_pct"), 2)
+        if pct is not None and pct > 0:  # CSV에서 비어 있던 지분율은 0.0으로 들어온다(계약 §2: 모르는 값은 null)
+            ownership[code] = pct
+    return weights, ownership
+
+
+def _positions_as_of(source) -> str | None:
+    match = _SOURCE_DATE_RE.search(str(source or ""))
+    return match.group(1) if match else None
+
+
+def build_summary_data(current: dict, ownership_change: dict | None = None) -> dict:
     """current.json(모양의 dict) → summary.json의 data payload(계약 §6.7)."""
     s = current.get("summary") or {}
     as_of = s.get("asOf") or current.get("asOf")
+    weights, ownership = _position_maps(current.get("holdings"))
     return {
         "lastUpdated": current.get("lastUpdated"),
         "source": current.get("source"),
@@ -120,6 +193,10 @@ def build_summary_data(current: dict) -> dict:
         },
         "allocation": _allocation(current.get("allocation")),
         "top": _top(current.get("holdings")),
+        "positionsAsOf": _positions_as_of(current.get("source")),
+        "weights": weights,
+        "ownership": ownership,
+        "ownershipChange": ownership_change,
     }
 
 
@@ -132,7 +209,7 @@ def _generated_at(last_updated) -> str | None:
 
 
 def build_summary_envelope(current: dict) -> dict:
-    data = build_summary_data(current)
+    data = build_summary_data(current, compute_ownership_change())
     as_of = data["summary"]["asOf"]
     if not as_of:
         raise vp.EnvelopeError("summary.asOf(가격 기준일)가 없어 envelope asOf를 정할 수 없음")

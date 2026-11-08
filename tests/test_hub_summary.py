@@ -50,7 +50,8 @@ def _current(**over):
 
 def test_build_summary_data_shape_matches_contract():
     data = hub_summary.build_summary_data(_current())
-    assert set(data) == {"lastUpdated", "source", "summary", "allocation", "top"}
+    assert set(data) == {"lastUpdated", "source", "summary", "allocation", "top",
+                         "positionsAsOf", "weights", "ownership", "ownershipChange"}
     assert set(data["summary"]) == {"totalValue", "nav", "count", "todayPct", "mtdPct", "ytdPct", "asOf"}
     assert data["summary"]["asOf"] == "2026-09-23"
     assert data["summary"]["todayPct"] == 1.0137 and data["summary"]["count"] == 3
@@ -99,6 +100,64 @@ def test_envelope_requires_data_date():
     cur["asOf"] = None
     with pytest.raises(vp.EnvelopeError):
         hub_summary.build_summary_envelope(cur)
+
+
+# ---------- 비중·지분율 맵과 지분율 변화 ----------
+
+def test_position_maps_cover_every_holding_and_skip_unknowns():
+    data = hub_summary.build_summary_data(_current())
+    assert data["weights"] == {"000660": 23.49, "005930": 29.171}   # 코드 이상·비중 없음 제외, 소수 3자리
+    assert data["ownership"] == {"000660": 7.55, "005930": 7.26}
+    assert data["positionsAsOf"] == "2024-12-31"                    # 가격 기준일이 아니라 공시 기준일
+    assert data["ownershipChange"] is None                          # 인자가 없으면 null
+
+    zero = _current(holdings=[{"stock_code": "005930", "weight": 1.0, "ownership_pct": 0.0}])
+    assert hub_summary.build_summary_data(zero)["ownership"] == {}  # 0.0은 CSV 공란 — 공시 값이 아니다
+    assert hub_summary.build_summary_data(_current(source=None))["positionsAsOf"] is None
+
+
+def _write_archive(archive_dir, day, rows):
+    holdings = [{"stock_code": code, "stock_name": code, "shares": shares, "ownership_pct": pct}
+                for code, shares, pct in rows]
+    (archive_dir / f"holdings_{day}.json").write_text(json.dumps({"date": day, "holdings": holdings}), encoding="utf-8")
+
+
+def test_ownership_change_compares_filed_ownership(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "ARCHIVE_DIR", str(tmp_path))
+    assert hub_summary.compute_ownership_change() is None  # 아카이브 없음
+    _write_archive(tmp_path, "2023-12-31", [("000660", 10, 7.0), ("005930", 10, 7.26), ("000020", 10, 5.0),
+                                            ("000040", 10, 0.0)])
+    assert hub_summary.compute_ownership_change() is None  # 1개뿐
+    _write_archive(tmp_path, "2024-12-31", [("000660", 90, 7.55), ("005930", 10, 7.26), ("000020", 10, 4.5),
+                                            ("000040", 10, 3.0), ("000050", 10, 6.0)])
+    assert hub_summary.compute_ownership_change() == {
+        "from": "2023-12-31", "to": "2024-12-31", "comparable": True,
+        # 변화 없는 종목은 빼고, 한쪽 값을 모르는 종목(0.0 공란·신규 편입)은 비교하지 않는다.
+        "changes": {"000020": -0.5, "000660": 0.55},
+    }
+
+
+def test_ownership_change_flags_the_same_file_republished_under_a_new_date(tmp_path, monkeypatch):
+    """2024-12-31과 2025-12-31 아카이브처럼 지분율이 전부 같고 추정 수량만 다르면 변화를 내지 않는다."""
+    monkeypatch.setattr(config, "ARCHIVE_DIR", str(tmp_path))
+    rows = [(f"{i:06d}", 100, 5.0 + i / 100) for i in range(1, 101)]
+    _write_archive(tmp_path, "2024-12-31", rows)
+    _write_archive(tmp_path, "2025-12-31", [(code, shares // 2, pct) for code, shares, pct in rows])
+    assert hub_summary.compute_ownership_change() == {
+        "from": "2024-12-31", "to": "2025-12-31", "comparable": False, "changes": {},
+    }
+
+
+def test_committed_archives_are_flagged_or_produce_real_changes():
+    change = hub_summary.compute_ownership_change()
+    assert change is not None and change["from"] < change["to"]
+    assert change["comparable"] is bool(change["changes"])
+
+
+def test_full_position_maps_stay_within_the_size_budget():
+    with open(os.path.join(REPO, "current.json"), encoding="utf-8") as f:
+        env = hub_summary.build_summary_envelope(json.load(f))
+    assert len(vp.dumps_compact(env).encode("utf-8")) < 64 * 1024  # 계약 §9 크기 예산
 
 
 # ---------- 쓰기(no-op) ----------
