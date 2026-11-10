@@ -3,8 +3,10 @@
 1순위 KRX 「업종분류현황」(pykrx): KRX 표준 업종(전기전자·서비스업 등 시장별 ~20개).
   단, data.krx.co.kr 이 화면은 로그인을 요구한다 — KRX_ID/KRX_PW 환경변수(데이터포털
   계정)가 있을 때만 성공하고, 없으면 로그인 페이지가 와서 빈 결과가 된다.
-2순위 KIND 상장법인목록(로그인 불필요): 표준산업분류(KSIC) 업종명. 클라우드 IP에서
-  차단될 수 있어(GitHub Actions에서 빈 응답 확인) 시도만 하고 실패를 허용한다.
+2순위 KIND 상장법인목록(로그인 불필요): 표준산업분류(KSIC) 업종명, 전 상장사 ~2,700개.
+  GitHub Actions에서도 전체 목록(~1.2MB)이 온다. 2026-08~10 Actions 로그의 「0종목 파싱」은
+  차단이 아니라 열 순서 변경(시장구분 열 추가)을 파서가 따라가지 못한 결과였다 — 지금은
+  머리글 이름으로 열을 찾는다. 그래도 실패할 수 있어 시도만 하고 실패를 허용한다.
 3순위 DART 기업개황(company.json): induty_code(KSIC) 앞 2자리 → 중분류명(config.KSIC_DIVISIONS).
   DART는 Actions에서 검증된 경로이고 corp_code 매핑 캐시를 재사용한다. 평가액 상위
   SECTOR_DART_MAX 종목만 조회(캐시 만료 주기에만 호출되므로 일배치 부담 없음).
@@ -12,9 +14,12 @@
 우선주는 목록에 없으므로 조회 시 보통주 코드(끝자리 0)로 폴백 매칭한다(sector_for).
 결과는 data/sector_cache.json에 캐시(30일 경과 시 재수집, 실패 시 낡은 캐시 폴백 —
 DART corpCode와 같은 패턴). 업종 구성은 거의 변하지 않으므로 일배치마다 재수집하지 않는다.
+캐시에는 형식 버전(_CACHE_VERSION)을 함께 적는다. 수집기 결함을 고칠 때 버전을 올리면
+다음 배치가 30일 만료를 기다리지 않고 한 번 재수집한다(재수집 실패 시 기존 캐시 폴백).
 """
 from __future__ import annotations
 
+import html as html_lib
 import logging
 import re
 from datetime import date, timedelta
@@ -29,11 +34,20 @@ logger = logging.getLogger("nps")
 _MARKETS = ("KOSPI", "KOSDAQ")
 _LOOKBACK_DAYS = 7  # 조회일이 휴장 등으로 비면 직전 영업일을 찾아 거슬러 가는 한도
 
+# 업종 캐시 형식 버전. 2: KIND 머리글 기반 파서(2026-11) — 그 전 캐시는 KIND 0종목 파싱 탓에
+# DART 상위 400종목뿐이라 버전이 다르면 만료 전이라도 한 번 재수집한다.
+_CACHE_VERSION = 2
+
 # KIND 상장법인목록 다운로드(EUC-KR HTML 테이블, searchType=13=전체) — 로그인 불필요
 KIND_CORPLIST_URL = "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+# 응답이 잘렸거나 형식이 바뀌어 일부만 읽힌 결과를 30일 캐시에 굳히지 않기 위한 하한(정상 ~2,700사)
+_KIND_MIN_COMPANIES = 1000
 _KIND_ROW_RE = re.compile(r"<tr[^>]*>(.*?)</tr>", re.S | re.I)
-_KIND_CELL_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.S | re.I)
+_KIND_CELL_RE = re.compile(r"<t[dh][^>]*>(.*?)</t[dh]>", re.S | re.I)
 _TAG_RE = re.compile(r"<[^>]+>")
+_SPACE_RE = re.compile(r"\s+")
+# 종목코드 6자리. 최근 신규 상장 코드는 영문을 섞는다(예: 0222E0, 2026-11 목록 75종목) — 첫 자리는 숫자.
+_KIND_CODE_RE = re.compile(r"[0-9][0-9A-Z]{5}")
 
 
 def _fetch_krx_sector_map(snap_date: str) -> dict[str, str]:
@@ -64,29 +78,52 @@ def _fetch_krx_sector_map(snap_date: str) -> dict[str, str]:
     return out
 
 
+def _kind_cells(row: str) -> list[str]:
+    """<tr> 안의 <th>/<td> 칸 → 태그·엔티티·연속 공백을 정리한 텍스트 목록."""
+    return [_SPACE_RE.sub(" ", html_lib.unescape(_TAG_RE.sub("", c))).strip()
+            for c in _KIND_CELL_RE.findall(row)]
+
+
 def _parse_kind_corplist(html: str) -> dict[str, str]:
     """KIND 상장법인목록 HTML 테이블 → {보통주 종목코드(6): KSIC 업종명}.
 
-    열 순서: 회사명, 종목코드, 업종, 주요제품, 상장일, ... — 2번째가 6자리 숫자인 행만 채택.
+    열 순서가 바뀐 적이 있다(예전: 회사명·종목코드·업종…, 2026-11 확인: 회사명·시장구분·
+    종목코드·업종…). 그래서 「종목코드」「업종」 머리글이 있는 첫 행에서 열 위치를 찾고,
+    그 아래 행만 읽는다. 머리글을 못 찾으면 빈 dict(형식 변경 — 호출부가 경고·폴백).
     """
     out: dict[str, str] = {}
-    for row in _KIND_ROW_RE.findall(html):
-        cells = [_TAG_RE.sub("", c).strip() for c in _KIND_CELL_RE.findall(row)]
-        if len(cells) >= 3 and re.fullmatch(r"\d{6}", cells[1]) and cells[2]:
-            out.setdefault(cells[1], cells[2])
+    columns: tuple[int, int] | None = None
+    for row in _KIND_ROW_RE.findall(html or ""):
+        cells = _kind_cells(row)
+        if columns is None:
+            if "종목코드" in cells and "업종" in cells:
+                columns = (cells.index("종목코드"), cells.index("업종"))
+            continue
+        code_i, sector_i = columns
+        if len(cells) <= max(code_i, sector_i):
+            continue
+        code, name = cells[code_i].upper(), cells[sector_i]
+        if _KIND_CODE_RE.fullmatch(code) and name:
+            out.setdefault(code, name)
     return out
 
 
 def _fetch_kind_sector_map() -> dict[str, str]:
-    """KIND 상장법인목록(익명) → {종목코드: 업종명}. 실패·빈 결과 시 빈 dict."""
+    """KIND 상장법인목록(익명) → {종목코드: 업종명}. 실패·건수 미달 시 빈 dict."""
     try:
         payload = _download(KIND_CORPLIST_URL, referer="https://kind.krx.co.kr/", timeout=60)
-        out = _parse_kind_corplist(payload.decode("euc-kr", "replace"))
-        logger.info("KIND 상장법인목록: %dB 수신, %d종목 파싱", len(payload), len(out))
-        return out
     except Exception as exc:
         logger.warning("KIND 상장법인목록 수집 실패: %s", exc)
         return {}
+    # EUC-KR의 상위 집합인 CP949로 읽어 일부 회사명의 확장 한글도 살린다.
+    out = _parse_kind_corplist(payload.decode("cp949", "replace"))
+    if len(out) < _KIND_MIN_COMPANIES:
+        # 응답은 왔는데 행을 못 읽음 = 형식 변경 의심. INFO로 묻히면 DART 폴백에 가려 몇 달 모른다.
+        logger.warning("KIND 상장법인목록: %dB 수신, %d종목 파싱(하한 %d 미만) — 형식 변경 의심, 폴백",
+                       len(payload), len(out), _KIND_MIN_COMPANIES)
+        return {}
+    logger.info("KIND 상장법인목록: %dB 수신, %d종목 파싱", len(payload), len(out))
+    return out
 
 
 def _fetch_dart_sector_map(codes_by_value: list[str]) -> dict[str, str]:
@@ -150,7 +187,10 @@ def sector_for(code: str, smap: dict[str, str]) -> str | None:
 
 
 def load_sector_map(snap_date: str, codes_by_value: list[str] | None = None) -> dict[str, str]:
-    """업종 매핑. 신선한 캐시 → 재수집 → (실패 시) 낡은 캐시 순. 전부 실패하면 빈 dict."""
+    """업종 매핑. 신선한 캐시 → 재수집 → (실패 시) 낡은 캐시 순. 전부 실패하면 빈 dict.
+
+    형식 버전이 다른 캐시(버전 없는 옛 캐시 포함)는 날짜가 신선해도 재수집 대상이다.
+    """
     cached = _read_json(config.SECTOR_CACHE) or {}
     cmap = cached.get("map") or {}
     if cmap:
@@ -159,10 +199,14 @@ def load_sector_map(snap_date: str, codes_by_value: list[str] | None = None) -> 
         except ValueError:
             age = 10**6
         if age <= config.SECTOR_CACHE_MAX_AGE_DAYS:
-            return cmap
+            if cached.get("version") == _CACHE_VERSION:
+                return cmap
+            logger.info("업종 캐시 형식 버전 %s → %s: 만료 전이지만 재수집",
+                        cached.get("version"), _CACHE_VERSION)
     fresh = _fetch_sector_map(snap_date, codes_by_value)
     if fresh:
-        _write_json(config.SECTOR_CACHE, {"fetched": date.today().isoformat(), "map": fresh})
+        _write_json(config.SECTOR_CACHE,
+                    {"version": _CACHE_VERSION, "fetched": date.today().isoformat(), "map": fresh})
         logger.info("업종 매핑 갱신: %d종목", len(fresh))
         return fresh
     if cmap:
